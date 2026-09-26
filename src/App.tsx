@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import type { LetterFormData } from '@/lib/supabase';
 import { getAnalyticsClientId, trackEvent, trackPageView } from '@/lib/analytics';
-import { PaymentModeSelector } from '@/components/PaymentModeSelector';
+import { PaymentModeIndicator } from '@/components/PaymentModeIndicator';
 import { isCheckoutEnabled, normalizeStripeMode, type StripeMode } from '@/lib/paymentMode';
 import { FileText, Briefcase, Calendar, User, MessageSquare, Sparkles, Copy, Download, Check, ArrowRight, Shield, RotateCcw, Loader2 } from 'lucide-react';
 
@@ -17,6 +17,7 @@ const TONES: { value: Tone; label: string; description: string }[] = [
 
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL as string | undefined;
 const FUNCTION_URL = supabaseUrl ? `${supabaseUrl}/functions/v1` : null;
+const PAYMENT_MODE = normalizeStripeMode(import.meta.env.VITE_PAYMENT_MODE);
 const CHECKOUT_AVAILABLE = isCheckoutEnabled(
   import.meta.env.VITE_ENABLE_CHECKOUT,
   supabaseUrl,
@@ -69,7 +70,6 @@ export default function App() {
   const [error, setError] = useState<string | null>(null);
   const [letter, setLetter] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
-  const [stripeMode, setStripeMode] = useState<StripeMode>('test');
   const [paymentReturn, setPaymentReturn] = useState<PaymentReturn | null>(null);
   const formStarted = useRef(false);
   const handledInitialQuery = useRef(false);
@@ -164,13 +164,13 @@ export default function App() {
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    trackEvent('form_submit_attempt', { mode: stripeMode });
+    trackEvent('form_submit_attempt', { mode: PAYMENT_MODE });
     if (!validate()) {
       trackEvent('form_validation_failed');
       return;
     }
 
-    trackEvent('form_submitted', { mode: stripeMode, tone: formData.tone });
+    trackEvent('form_submitted', { mode: PAYMENT_MODE, tone: formData.tone });
 
     setLoading(true);
     setError(null);
@@ -188,7 +188,7 @@ export default function App() {
         },
         body: JSON.stringify({
           form: formData,
-          mode: stripeMode,
+          mode: PAYMENT_MODE,
           gaClientId: getAnalyticsClientId(),
         }),
       });
@@ -200,14 +200,14 @@ export default function App() {
 
       const checkoutData = await response.json();
       if (checkoutData.url) {
-        trackEvent('checkout_session_created', { mode: stripeMode });
-        trackEvent('checkout_redirect_started', { mode: stripeMode });
+        trackEvent('checkout_session_created', { mode: PAYMENT_MODE });
+        trackEvent('checkout_redirect_started', { mode: PAYMENT_MODE });
         window.location.href = checkoutData.url;
       } else {
         throw new Error('No checkout URL returned');
       }
     } catch (err) {
-      trackEvent('checkout_flow_failed', { mode: stripeMode, stage: 'create_checkout' });
+      trackEvent('checkout_flow_failed', { mode: PAYMENT_MODE, stage: 'create_checkout' });
       setError(err instanceof Error ? err.message : 'An unexpected error occurred');
       setLoading(false);
     }
@@ -261,7 +261,6 @@ export default function App() {
     setErrors({});
     setError(null);
     formStarted.current = false;
-    setStripeMode('test');
   }
 
   if (step === 'processing') {
@@ -369,6 +368,9 @@ export default function App() {
               <p className="text-slate-500 mt-3 text-lg">
                 Professional, clean, and respectful. No bridges burned.
               </p>
+              <div className="mt-4">
+                <PaymentModeIndicator mode={PAYMENT_MODE} />
+              </div>
             </div>
 
             {error && (
@@ -536,14 +538,6 @@ export default function App() {
                 {errors.waiver && <p className="text-red-500 text-xs mt-2">{errors.waiver}</p>}
               </div>
 
-              <PaymentModeSelector
-                mode={stripeMode}
-                onChange={(mode) => {
-                  setStripeMode(mode);
-                  trackEvent('stripe_mode_selected', { mode });
-                }}
-              />
-
               <button
                 type="submit"
                 disabled={loading || !CHECKOUT_AVAILABLE}
@@ -556,7 +550,7 @@ export default function App() {
                   </>
                 ) : (
                   <>
-                    {stripeMode === 'test' ? 'Try Test Checkout — no charge' : 'Generate Letter — £1'}
+                    {PAYMENT_MODE === 'test' ? 'Try Test Checkout — no charge' : 'Generate Letter — £1'}
                     <ArrowRight className="w-5 h-5" />
                   </>
                 )}
@@ -580,7 +574,7 @@ export default function App() {
                 <div className="w-8 h-8 bg-slate-100 rounded-full flex items-center justify-center mx-auto mb-2">
                   <span className="text-sm font-bold text-slate-600">2</span>
                 </div>
-                <p className="text-xs text-slate-500">{stripeMode === 'test' ? 'Test checkout' : 'Pay £1 securely'}</p>
+                <p className="text-xs text-slate-500">{PAYMENT_MODE === 'test' ? 'Test checkout' : 'Pay £1 securely'}</p>
               </div>
               <div className="px-2">
                 <div className="w-8 h-8 bg-slate-100 rounded-full flex items-center justify-center mx-auto mb-2">

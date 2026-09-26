@@ -15,9 +15,11 @@ Set these Replit Secrets before using the app:
 
 Checkout is disabled by default. Set `VITE_ENABLE_CHECKOUT=true` only after the security migration is applied, the Supabase functions are deployed, and a full Stripe test payment and letter delivery have been verified. Both frontend settings above are also required. For a static publish, Vite embeds these values during the build; after changing them, publish again so the live build receives them.
 
+The owner chooses the payment environment before publishing with `VITE_PAYMENT_MODE=test` (default, shown as **Sandbox**) or `VITE_PAYMENT_MODE=live` (shown as **Live Payments**). Visitors see the environment but cannot switch it. Set the Supabase Edge Function setting `PAYMENT_MODE` to the same value; it defaults to `test` and refuses checkout requests that disagree with its setting. To change environments, update both settings and publish the frontend again. Payment returns from earlier checkouts can still be verified in their original mode.
+
 The frontend calls the `create-checkout` and `generate-letter` Supabase Edge Functions. Those functions use the service role to access the private `resignation_letters` table; visitors have no direct table access. Apply every migration in `supabase/migrations/` in order, including `20260926060000_protect_resignation_letters.sql`, and deploy `create-checkout`, `generate-letter`, and `stripe-webhook` to the same Supabase project. Do not publish a working payment flow before the security migration is applied.
 
-The Stripe mode defaults to test. The checkout Edge Function expects these secrets in Supabase Edge Function settings:
+The checkout Edge Function expects these secrets in Supabase Edge Function settings:
 
 - `OPENAI_API_KEY`
 - `STRIPE_TEST_SECRET_KEY`

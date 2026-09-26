@@ -4,6 +4,7 @@ import { parseLetterInput } from "../_shared/letter.ts";
 import {
   checkoutSessionParams,
   configuredAppOrigin,
+  configuredCheckoutMode,
   isStripeMode,
   isVerifiedCheckoutSession,
   stripeKeyForMode,
@@ -36,7 +37,17 @@ Deno.serve(async (req: Request) => {
     const { letterId, mode, sessionId } = body;
 
     if (!isStripeMode(mode)) {
-      return jsonResponse({ error: "Choose test or live payment mode." }, 400);
+      return jsonResponse({ error: "Invalid payment environment." }, 400);
+    }
+
+    if (action === "create-checkout") {
+      const configuredMode = configuredCheckoutMode(Deno.env.get("PAYMENT_MODE"));
+      if (!configuredMode) {
+        return jsonResponse({ error: "The checkout payment environment is not configured correctly." }, 503);
+      }
+      if (mode !== configuredMode) {
+        return jsonResponse({ error: "Checkout is not available in this payment environment." }, 409);
+      }
     }
 
     const stripeKey = stripeKeyForMode(mode, (name) => Deno.env.get(name));

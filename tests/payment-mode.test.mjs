@@ -3,6 +3,7 @@ import test from 'node:test';
 import { isCheckoutEnabled, normalizeStripeMode } from '../src/lib/paymentMode.ts';
 import {
   checkoutSessionParams,
+  configuredCheckoutMode,
   isStripeMode,
   isVerifiedCheckoutSession,
   paymentAnalyticsParams,
@@ -30,6 +31,16 @@ test('accepts only explicit test and live modes on the payment backend', () => {
   assert.equal(isStripeMode('test'), true);
   assert.equal(isStripeMode('live'), true);
   assert.equal(isStripeMode('production'), false);
+});
+
+test('only the configured server payment mode can start checkout', () => {
+  assert.equal(configuredCheckoutMode(undefined), 'test');
+  assert.equal(configuredCheckoutMode('test'), 'test');
+  assert.equal(configuredCheckoutMode('live'), 'live');
+  assert.equal(configuredCheckoutMode('sandbox'), null);
+  assert.equal(configuredCheckoutMode(''), null);
+  assert.notEqual(configuredCheckoutMode('test'), 'live');
+  assert.notEqual(configuredCheckoutMode('live'), 'test');
 });
 
 test('uses a separate public price ID for each Stripe mode', () => {

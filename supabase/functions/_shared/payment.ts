@@ -14,6 +14,11 @@ export function isStripeMode(value: unknown): value is StripeMode {
   return value === 'test' || value === 'live';
 }
 
+export function configuredCheckoutMode(value: string | undefined): StripeMode | null {
+  if (value === undefined) return 'test';
+  return isStripeMode(value) ? value : null;
+}
+
 export function stripeKeyForMode(
   mode: StripeMode,
   readEnvironment: (name: string) => string | undefined,
