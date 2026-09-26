@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import type { LetterFormData } from '@/lib/supabase';
 import { getAnalyticsClientId, trackEvent, trackPageView } from '@/lib/analytics';
 import { PaymentModeSelector } from '@/components/PaymentModeSelector';
-import { normalizeStripeMode, type StripeMode } from '@/lib/paymentMode';
+import { isCheckoutEnabled, normalizeStripeMode, type StripeMode } from '@/lib/paymentMode';
 import { FileText, Briefcase, Calendar, User, MessageSquare, Sparkles, Copy, Download, Check, ArrowRight, Shield, RotateCcw, Loader2 } from 'lucide-react';
 
 type Step = 'form' | 'processing' | 'output';
@@ -17,7 +17,11 @@ const TONES: { value: Tone; label: string; description: string }[] = [
 
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL as string | undefined;
 const FUNCTION_URL = supabaseUrl ? `${supabaseUrl}/functions/v1` : null;
-const CHECKOUT_AVAILABLE = Boolean(FUNCTION_URL && import.meta.env.VITE_SUPABASE_ANON_KEY);
+const CHECKOUT_AVAILABLE = isCheckoutEnabled(
+  import.meta.env.VITE_ENABLE_CHECKOUT,
+  supabaseUrl,
+  import.meta.env.VITE_SUPABASE_ANON_KEY,
+);
 
 async function generateLetter(id: string, sessionId: string, mode: StripeMode): Promise<string> {
   if (!FUNCTION_URL || !import.meta.env.VITE_SUPABASE_ANON_KEY) {
@@ -375,7 +379,7 @@ export default function App() {
 
             {!CHECKOUT_AVAILABLE && !paymentReturn && (
               <div role="status" className="mb-6 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
-                Preview only: test payments are not connected yet. The form is available to explore, but checkout is disabled until Supabase is configured.
+                Preview only: checkout is paused until the secure payment setup is complete. You can explore the form, but no payment can be started here.
               </div>
             )}
 

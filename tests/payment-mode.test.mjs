@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { normalizeStripeMode } from '../src/lib/paymentMode.ts';
+import { isCheckoutEnabled, normalizeStripeMode } from '../src/lib/paymentMode.ts';
 import {
   checkoutSessionParams,
   isStripeMode,
@@ -16,6 +16,14 @@ test('defaults unknown or missing browser mode values to test mode', () => {
   assert.equal(normalizeStripeMode(null), 'test');
   assert.equal(normalizeStripeMode('unexpected'), 'test');
   assert.equal(normalizeStripeMode('live'), 'live');
+});
+
+test('checkout remains paused until explicitly enabled with both frontend settings', () => {
+  assert.equal(isCheckoutEnabled(undefined, 'https://supabase.example', 'anon-key'), false);
+  assert.equal(isCheckoutEnabled('false', 'https://supabase.example', 'anon-key'), false);
+  assert.equal(isCheckoutEnabled('true', 'https://supabase.example', undefined), false);
+  assert.equal(isCheckoutEnabled('true', undefined, 'anon-key'), false);
+  assert.equal(isCheckoutEnabled('true', 'https://supabase.example', 'anon-key'), true);
 });
 
 test('accepts only explicit test and live modes on the payment backend', () => {

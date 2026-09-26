@@ -13,7 +13,7 @@ Set these Replit Secrets before using the app:
 - `VITE_SUPABASE_URL`
 - `VITE_SUPABASE_ANON_KEY`
 
-Without both frontend settings, the preview is view-only and checkout is disabled. For a static publish, Vite embeds these values during the build; after adding them, publish again so the live build receives them.
+Checkout is disabled by default. Set `VITE_ENABLE_CHECKOUT=true` only after the security migration is applied, the Supabase functions are deployed, and a full Stripe test payment and letter delivery have been verified. Both frontend settings above are also required. For a static publish, Vite embeds these values during the build; after changing them, publish again so the live build receives them.
 
 The frontend calls the `create-checkout` and `generate-letter` Supabase Edge Functions. Those functions use the service role to access the private `resignation_letters` table; visitors have no direct table access. Apply every migration in `supabase/migrations/` in order, including `20260926060000_protect_resignation_letters.sql`, and deploy `create-checkout`, `generate-letter`, and `stripe-webhook` to the same Supabase project. Do not publish a working payment flow before the security migration is applied.
 
