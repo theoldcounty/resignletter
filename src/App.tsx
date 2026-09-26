@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { getSupabaseClient, type ResignationLetter, type LetterFormData } from '@/lib/supabase';
+import type { LetterFormData } from '@/lib/supabase';
 import { getAnalyticsClientId, trackEvent, trackPageView } from '@/lib/analytics';
 import { PaymentModeSelector } from '@/components/PaymentModeSelector';
 import { normalizeStripeMode, type StripeMode } from '@/lib/paymentMode';
@@ -7,6 +7,7 @@ import { FileText, Briefcase, Calendar, User, MessageSquare, Sparkles, Copy, Dow
 
 type Step = 'form' | 'processing' | 'output';
 type Tone = 'grateful' | 'professional' | 'direct';
+type PaymentReturn = { letterId: string; sessionId: string; mode: StripeMode };
 
 const TONES: { value: Tone; label: string; description: string }[] = [
   { value: 'grateful', label: 'Grateful', description: 'Warm and appreciative' },
@@ -16,6 +17,37 @@ const TONES: { value: Tone; label: string; description: string }[] = [
 
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL as string | undefined;
 const FUNCTION_URL = supabaseUrl ? `${supabaseUrl}/functions/v1` : null;
+
+async function generateLetter(id: string, sessionId: string, mode: StripeMode): Promise<string> {
+  if (!FUNCTION_URL || !import.meta.env.VITE_SUPABASE_ANON_KEY) {
+    throw new Error('Supabase is not configured. Add VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY.');
+  }
+
+  trackEvent('letter_generation_started');
+  const response = await fetch(`${FUNCTION_URL}/generate-letter`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+    },
+    body: JSON.stringify({ letterId: id, sessionId, mode }),
+  });
+
+  if (!response.ok) {
+    trackEvent('letter_generation_failed');
+    const errData = await response.json().catch(() => ({}));
+    throw new Error(errData.error || 'Letter generation failed. Please retry.');
+  }
+
+  const data = await response.json();
+  if (typeof data.letter !== 'string' || !data.letter.trim()) {
+    trackEvent('letter_generation_failed');
+    throw new Error('No letter content returned. Please retry.');
+  }
+
+  trackEvent('letter_generation_succeeded');
+  return data.letter;
+}
 
 export default function App() {
   const [step, setStep] = useState<Step>('form');
@@ -33,6 +65,7 @@ export default function App() {
   const [letter, setLetter] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
   const [stripeMode, setStripeMode] = useState<StripeMode>('test');
+  const [paymentReturn, setPaymentReturn] = useState<PaymentReturn | null>(null);
   const formStarted = useRef(false);
   const handledInitialQuery = useRef(false);
 
@@ -42,10 +75,9 @@ export default function App() {
     setError(null);
     let paymentVerified = false;
     try {
-      if (!FUNCTION_URL) {
+      if (!FUNCTION_URL || !import.meta.env.VITE_SUPABASE_ANON_KEY) {
         throw new Error('Supabase is not configured. Add VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY.');
       }
-      const supabaseClient = getSupabaseClient();
 
       const verificationResponse = await fetch(`${FUNCTION_URL}/create-checkout`, {
         method: 'POST',
@@ -72,33 +104,13 @@ export default function App() {
       }
 
       paymentVerified = true;
+      const generated = await generateLetter(id, sessionId, mode);
+      setLetter(generated);
+      setPaymentReturn(null);
+      setStep('output');
+      window.history.replaceState({}, document.title, window.location.pathname);
       trackEvent('payment_succeeded', { mode });
-      const { data: record, error: dbError } = await supabaseClient
-        .from('resignation_letters')
-        .select('*')
-        .eq('id', id)
-        .maybeSingle();
-
-      if (dbError || !record) {
-        setError('Could not retrieve your letter. Please contact support.');
-        setStep('form');
-        return;
-      }
-
-      const letterRecord = record as ResignationLetter;
-
-      if (letterRecord.letter_text) {
-        setLetter(letterRecord.letter_text);
-        setStep('output');
-        trackPageView('/letter', 'Your resignation letter');
-      } else {
-        const generated = await generateLetter(id, letterRecord);
-        if (generated) {
-          setLetter(generated);
-          setStep('output');
-          trackPageView('/letter', 'Your resignation letter');
-        }
-      }
+      trackPageView('/letter', 'Your resignation letter');
     } catch (err) {
       trackEvent(paymentVerified ? 'payment_return_processing_failed' : 'payment_verification_failed', { mode });
       trackPageView('/payment/verification-failed', 'Payment verification failed');
@@ -117,7 +129,6 @@ export default function App() {
     const mode = normalizeStripeMode(params.get('mode'));
     const cancelled = params.get('cancelled');
 
-    setStripeMode(mode);
     if (cancelled) {
       trackPageView('/payment/cancelled', 'Payment cancelled');
       trackEvent('payment_cancelled', { mode });
@@ -128,51 +139,13 @@ export default function App() {
     if (sessionId && returnedLetterId) {
       trackPageView('/payment/return', 'Payment return');
       trackEvent('payment_returned', { mode });
+      setPaymentReturn({ letterId: returnedLetterId, sessionId, mode });
       void handlePostPayment(returnedLetterId, sessionId, mode);
-      window.history.replaceState({}, document.title, window.location.pathname);
       return;
     }
 
     trackPageView('/', 'Resignation letter form');
   }, [handlePostPayment]);
-
-  async function generateLetter(id: string, record: ResignationLetter): Promise<string | null> {
-    if (!FUNCTION_URL) {
-      throw new Error('Supabase is not configured. Add VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY.');
-    }
-
-    trackEvent('letter_generation_started');
-    const response = await fetch(`${FUNCTION_URL}/generate-letter`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
-      },
-      body: JSON.stringify({
-        letterId: id,
-        managerName: record.manager_name,
-        company: record.company,
-        lastDay: record.last_day,
-        reason: record.reason,
-        tone: record.tone,
-      }),
-    });
-
-    if (!response.ok) {
-      trackEvent('letter_generation_failed');
-      const errData = await response.json().catch(() => ({}));
-      throw new Error(errData.error || 'Letter generation failed');
-    }
-
-    const data = await response.json();
-    if (!data.letter) {
-      trackEvent('letter_generation_failed');
-      throw new Error('No letter content returned');
-    }
-
-    trackEvent('letter_generation_succeeded');
-    return data.letter as string;
-  }
 
   function validate(): boolean {
     const newErrors: Record<string, string> = {};
@@ -197,38 +170,10 @@ export default function App() {
     setLoading(true);
     setError(null);
 
-    let stage: 'save_letter' | 'create_checkout' = 'save_letter';
     try {
-      const supabaseClient = getSupabaseClient();
-      const { data, error: insertError } = await supabaseClient
-        .from('resignation_letters')
-        .insert({
-          manager_name: formData.managerName,
-          company: formData.company,
-          last_day: formData.lastDay,
-          reason: formData.reason || null,
-          tone: formData.tone,
-          paid: false,
-          payment_status: 'pending',
-        })
-        .select()
-        .single();
-
-      if (insertError || !data) {
-        trackEvent('letter_save_failed', { mode: stripeMode });
-        setError('Failed to save your details. Please try again.');
-        setLoading(false);
-        return;
-      }
-
-      const record = data as ResignationLetter;
-      const newLetterId = record.id;
-      trackEvent('letter_record_created', { mode: stripeMode });
-
-      if (!FUNCTION_URL) {
+      if (!FUNCTION_URL || !import.meta.env.VITE_SUPABASE_ANON_KEY) {
         throw new Error('Supabase is not configured. Add VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY.');
       }
-      stage = 'create_checkout';
 
       const response = await fetch(`${FUNCTION_URL}/create-checkout`, {
         method: 'POST',
@@ -237,7 +182,7 @@ export default function App() {
           'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
         },
         body: JSON.stringify({
-          letterId: newLetterId,
+          form: formData,
           mode: stripeMode,
           gaClientId: getAnalyticsClientId(),
         }),
@@ -257,7 +202,7 @@ export default function App() {
         throw new Error('No checkout URL returned');
       }
     } catch (err) {
-      trackEvent('checkout_flow_failed', { mode: stripeMode, stage });
+      trackEvent('checkout_flow_failed', { mode: stripeMode, stage: 'create_checkout' });
       setError(err instanceof Error ? err.message : 'An unexpected error occurred');
       setLoading(false);
     }
@@ -299,6 +244,7 @@ export default function App() {
     setStep('form');
     trackPageView('/', 'Resignation letter form');
     setLetter(null);
+    setPaymentReturn(null);
     setFormData({
       managerName: '',
       company: '',
@@ -421,11 +367,41 @@ export default function App() {
             </div>
 
             {error && (
-              <div className="mb-6 bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-xl text-sm">
+              <div role="alert" className="mb-6 bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-xl text-sm">
                 {error}
               </div>
             )}
 
+            {paymentReturn ? (
+              <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6 sm:p-8">
+                <h2 className="text-xl font-semibold text-slate-900">Finish retrieving your letter</h2>
+                <p className="mt-2 text-sm text-slate-600">
+                  Your checkout return is saved on this page. Retry verification and letter generation without making another payment.
+                  If it still fails, keep this page open and contact support.
+                </p>
+                <div className="mt-6 flex flex-col sm:flex-row gap-3">
+                  <button
+                    type="button"
+                    onClick={() => void handlePostPayment(paymentReturn.letterId, paymentReturn.sessionId, paymentReturn.mode)}
+                    className="rounded-xl bg-slate-900 px-5 py-3 text-sm font-semibold text-white hover:bg-slate-800"
+                  >
+                    Retry getting my letter
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (!window.confirm('Starting over will remove this payment return link. Continue only if you no longer need to retry it.')) return;
+                      setPaymentReturn(null);
+                      setError(null);
+                      window.history.replaceState({}, document.title, window.location.pathname);
+                    }}
+                    className="rounded-xl border border-slate-300 px-5 py-3 text-sm font-medium text-slate-700 hover:bg-slate-50"
+                  >
+                    Start a new letter
+                  </button>
+                </div>
+              </div>
+            ) : (
             <form
               onSubmit={handleSubmit}
               onFocusCapture={() => {
@@ -569,7 +545,7 @@ export default function App() {
                   </>
                 ) : (
                   <>
-                    Generate Letter — £1
+                    {stripeMode === 'test' ? 'Try Test Checkout — no charge' : 'Generate Letter — £1'}
                     <ArrowRight className="w-5 h-5" />
                   </>
                 )}
@@ -580,6 +556,7 @@ export default function App() {
                 Secure payment via Stripe
               </div>
             </form>
+            )}
 
             <div className="mt-8 grid grid-cols-3 gap-4 text-center">
               <div className="px-2">
@@ -592,7 +569,7 @@ export default function App() {
                 <div className="w-8 h-8 bg-slate-100 rounded-full flex items-center justify-center mx-auto mb-2">
                   <span className="text-sm font-bold text-slate-600">2</span>
                 </div>
-                <p className="text-xs text-slate-500">Pay £1 securely</p>
+                <p className="text-xs text-slate-500">{stripeMode === 'test' ? 'Test checkout' : 'Pay £1 securely'}</p>
               </div>
               <div className="px-2">
                 <div className="w-8 h-8 bg-slate-100 rounded-full flex items-center justify-center mx-auto mb-2">

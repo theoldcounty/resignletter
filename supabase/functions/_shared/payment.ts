@@ -14,6 +14,56 @@ export function isStripeMode(value: unknown): value is StripeMode {
   return value === 'test' || value === 'live';
 }
 
+export function stripeKeyForMode(
+  mode: StripeMode,
+  readEnvironment: (name: string) => string | undefined,
+): { ok: true; key: string } | { ok: false; error: string } {
+  const name = mode === 'test' ? 'STRIPE_TEST_SECRET_KEY' : 'STRIPE_LIVE_SECRET_KEY';
+  const key = readEnvironment(name);
+  if (!key) {
+    return { ok: false, error: `${mode === 'test' ? 'Test' : 'Live'} Stripe mode is not configured.` };
+  }
+  if (!key.startsWith(mode === 'test' ? 'sk_test_' : 'sk_live_')) {
+    return { ok: false, error: `The ${mode} Stripe key does not match its selected mode.` };
+  }
+  return { ok: true, key };
+}
+
+export function configuredAppOrigin(value: string | undefined): string | null {
+  if (!value) return null;
+  try {
+    const url = new URL(value);
+    if (url.protocol !== 'https:' || url.username || url.password) return null;
+    return url.origin;
+  } catch {
+    return null;
+  }
+}
+
+export function checkoutSessionParams(
+  origin: string,
+  letterId: string,
+  mode: StripeMode,
+  gaClientId?: string,
+) {
+  const metadata: Record<string, string> = {
+    letter_id: letterId,
+    stripe_mode: mode,
+    stripe_product_id: stripeProductIds[mode],
+    stripe_price_id: stripePriceIds[mode],
+  };
+  if (gaClientId) metadata.ga_client_id = gaClientId;
+
+  return {
+    mode: 'payment' as const,
+    line_items: [{ price: stripePriceIds[mode], quantity: 1 }],
+    metadata,
+    payment_intent_data: { metadata },
+    success_url: `${origin}/?session_id={CHECKOUT_SESSION_ID}&letter_id=${encodeURIComponent(letterId)}&mode=${mode}`,
+    cancel_url: `${origin}/?cancelled=true&mode=${mode}`,
+  };
+}
+
 export function isVerifiedCheckoutSession(
   session: {
     metadata?: Record<string, string | undefined> | null;
@@ -32,6 +82,33 @@ export function isVerifiedCheckoutSession(
 }
 
 export type PaymentStatus = 'paid' | 'failed' | 'cancelled' | 'expired';
+
+export function paymentAnalyticsParams(
+  paymentStatus: PaymentStatus,
+  mode: StripeMode,
+  productId?: string,
+  amountMinorUnits?: number,
+  currency?: string,
+): Record<string, unknown> {
+  const params: Record<string, unknown> = {
+    payment_mode: mode,
+    payment_status: paymentStatus,
+  };
+
+  if (paymentStatus === 'paid') {
+    if (
+      typeof amountMinorUnits === 'number' &&
+      Number.isFinite(amountMinorUnits) &&
+      amountMinorUnits >= 0
+    ) {
+      params.value = amountMinorUnits / 100;
+    }
+    if (currency && /^[a-z]{3}$/i.test(currency)) params.currency = currency.toUpperCase();
+    if (productId) params.items = [{ item_id: productId, quantity: 1 }];
+  }
+
+  return params;
+}
 
 export function paymentStatusForStripeEvent(
   eventType: string,

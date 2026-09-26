@@ -1,10 +1,12 @@
 import { createClient } from "npm:@supabase/supabase-js@2.57.4";
 import Stripe from "npm:stripe@17.7.0";
+import { parseLetterInput } from "../_shared/letter.ts";
 import {
+  checkoutSessionParams,
+  configuredAppOrigin,
   isStripeMode,
   isVerifiedCheckoutSession,
-  stripePriceIds,
-  stripeProductIds,
+  stripeKeyForMode,
 } from "../_shared/payment.ts";
 
 const corsHeaders = {
@@ -36,27 +38,18 @@ Deno.serve(async (req: Request) => {
     if (!isStripeMode(mode)) {
       return jsonResponse({ error: "Choose test or live payment mode." }, 400);
     }
-    if (typeof letterId !== "string" || !letterId.trim()) {
-      return jsonResponse({ error: "A letter ID is required." }, 400);
-    }
 
-    const stripeKeyName = mode === "test" ? "STRIPE_TEST_SECRET_KEY" : "STRIPE_LIVE_SECRET_KEY";
-    const stripeKey = Deno.env.get(stripeKeyName);
-    if (!stripeKey) {
-      return jsonResponse({ error: `${mode === "test" ? "Test" : "Live"} Stripe mode is not configured.` }, 503);
-    }
-    const expectedKeyPrefix = mode === "test" ? "sk_test_" : "sk_live_";
-    if (!stripeKey.startsWith(expectedKeyPrefix)) {
-      return jsonResponse({ error: `The ${mode} Stripe key does not match its selected mode.` }, 503);
-    }
+    const stripeKey = stripeKeyForMode(mode, (name) => Deno.env.get(name));
+    if (!stripeKey.ok) return jsonResponse({ error: stripeKey.error }, 503);
 
-    const stripe = new Stripe(stripeKey, {
+    const stripe = new Stripe(stripeKey.key, {
       apiVersion: "2025-08-27.basil",
     });
 
     if (action === "verify-payment") {
-      if (typeof sessionId !== "string" || !sessionId.trim()) {
-        return jsonResponse({ error: "A checkout session ID is required." }, 400);
+      if (typeof letterId !== "string" || !letterId.trim() ||
+        typeof sessionId !== "string" || !sessionId.trim()) {
+        return jsonResponse({ error: "A letter and checkout session are required." }, 400);
       }
 
       const session = await stripe.checkout.sessions.retrieve(sessionId);
@@ -69,7 +62,6 @@ Deno.serve(async (req: Request) => {
       if (!supabaseUrl || !serviceRoleKey) {
         return jsonResponse({ error: "Payment confirmation storage is not configured." }, 503);
       }
-
       const supabase = createClient(supabaseUrl, serviceRoleKey);
       const paymentIntentId = typeof session.payment_intent === "string"
         ? session.payment_intent
@@ -94,38 +86,46 @@ Deno.serve(async (req: Request) => {
       return jsonResponse({ error: "Unsupported payment action." }, 400);
     }
 
-    const requestOrigin = req.headers.get("origin") || Deno.env.get("APP_BASE_URL");
-    if (!requestOrigin) {
-      return jsonResponse({ error: "The app return URL is not configured." }, 400);
+    const origin = configuredAppOrigin(Deno.env.get("APP_BASE_URL"));
+    if (!origin) return jsonResponse({ error: "The app return URL is not configured." }, 503);
+    const form = parseLetterInput(body.form);
+    if (!form) return jsonResponse({ error: "Please check the letter details and try again." }, 400);
+
+    const supabaseUrl = Deno.env.get("SUPABASE_URL");
+    const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+    if (!supabaseUrl || !serviceRoleKey) {
+      return jsonResponse({ error: "Letter storage is not configured." }, 503);
     }
-    const origin = new URL(requestOrigin).origin;
+    const supabase = createClient(supabaseUrl, serviceRoleKey);
+    const { data: record, error: insertError } = await supabase
+      .from("resignation_letters")
+      .insert({
+        manager_name: form.managerName,
+        company: form.company,
+        last_day: form.lastDay,
+        reason: form.reason,
+        tone: form.tone,
+        paid: false,
+        payment_status: "pending",
+      })
+      .select("id")
+      .single();
+    if (insertError || !record) {
+      return jsonResponse({ error: "Could not save your details. Please try again." }, 500);
+    }
+
     const gaClientId = typeof body.gaClientId === "string" &&
       /^[0-9]+\.[0-9]+$/.test(body.gaClientId) &&
       body.gaClientId.length <= 100
       ? body.gaClientId
       : undefined;
-    const metadata: Record<string, string> = {
-      letter_id: letterId,
-      stripe_mode: mode,
-      stripe_product_id: stripeProductIds[mode],
-      stripe_price_id: stripePriceIds[mode],
-    };
-    if (gaClientId) metadata.ga_client_id = gaClientId;
-
-    const session = await stripe.checkout.sessions.create({
-      mode: "payment",
-      line_items: [{ price: stripePriceIds[mode], quantity: 1 }],
-      metadata,
-      payment_intent_data: { metadata },
-      success_url: `${origin}/?session_id={CHECKOUT_SESSION_ID}&letter_id=${encodeURIComponent(letterId)}&mode=${mode}`,
-      cancel_url: `${origin}/?cancelled=true&mode=${mode}`,
-    });
-
-    return jsonResponse({ url: session.url, sessionId: session.id, mode });
-  } catch (err) {
-    return jsonResponse(
-      { error: err instanceof Error ? err.message : "Unexpected payment error." },
-      500,
+    const session = await stripe.checkout.sessions.create(
+      checkoutSessionParams(origin, record.id, mode, gaClientId),
     );
+    if (!session.url) return jsonResponse({ error: "Stripe did not provide a checkout link." }, 502);
+
+    return jsonResponse({ url: session.url, mode });
+  } catch {
+    return jsonResponse({ error: "Payment setup failed. Please try again." }, 500);
   }
 });

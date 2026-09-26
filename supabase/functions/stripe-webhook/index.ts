@@ -1,6 +1,7 @@
 import { createClient } from "npm:@supabase/supabase-js@2.57.4";
 import {
   isStripeMode,
+  paymentAnalyticsParams,
   paymentStatusForStripeEvent,
   verifyStripeSignature,
 } from "../_shared/payment.ts";
@@ -129,13 +130,17 @@ Deno.serve(async (req: Request) => {
             client_id: gaClientId,
             events: [{
               name: gaEventName,
-              params: {
-                transaction_id: String(stripeObject.id ?? event.id ?? ""),
-                payment_mode: mode,
-                payment_status: paymentStatus,
-                item_id: metadata.stripe_product_id ?? "",
-                currency: "GBP",
-              },
+              params: paymentAnalyticsParams(
+                paymentStatus,
+                mode,
+                metadata.stripe_product_id,
+                typeof stripeObject.amount_total === "number"
+                  ? stripeObject.amount_total
+                  : typeof stripeObject.amount === "number"
+                    ? stripeObject.amount
+                    : undefined,
+                typeof stripeObject.currency === "string" ? stripeObject.currency : undefined,
+              ),
             }],
           }),
         },
