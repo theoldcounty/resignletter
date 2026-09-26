@@ -1,5 +1,8 @@
-import { useState, useEffect } from 'react';
-import { supabase, type ResignationLetter, type LetterFormData } from '@/lib/supabase';
+import { useState, useEffect, useCallback, useRef } from 'react';
+import { getSupabaseClient, type ResignationLetter, type LetterFormData } from '@/lib/supabase';
+import { getAnalyticsClientId, trackEvent, trackPageView } from '@/lib/analytics';
+import { PaymentModeSelector } from '@/components/PaymentModeSelector';
+import { normalizeStripeMode, type StripeMode } from '@/lib/paymentMode';
 import { FileText, Briefcase, Calendar, User, MessageSquare, Sparkles, Copy, Download, Check, ArrowRight, Shield, RotateCcw, Loader2 } from 'lucide-react';
 
 type Step = 'form' | 'processing' | 'output';
@@ -11,7 +14,8 @@ const TONES: { value: Tone; label: string; description: string }[] = [
   { value: 'direct', label: 'Direct', description: 'Straight to the point' },
 ];
 
-const FUNCTION_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1`;
+const supabaseUrl = import.meta.env.VITE_SUPABASE_URL as string | undefined;
+const FUNCTION_URL = supabaseUrl ? `${supabaseUrl}/functions/v1` : null;
 
 export default function App() {
   const [step, setStep] = useState<Step>('form');
@@ -27,31 +31,49 @@ export default function App() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [letter, setLetter] = useState<string | null>(null);
-  const [letterId, setLetterId] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
+  const [stripeMode, setStripeMode] = useState<StripeMode>('test');
+  const formStarted = useRef(false);
+  const handledInitialQuery = useRef(false);
 
-  useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    const sessionId = params.get('session_id');
-    const returnedLetterId = params.get('letter_id');
-    const cancelled = params.get('cancelled');
-
-    if (cancelled) {
-      window.history.replaceState({}, document.title, window.location.pathname);
-      return;
-    }
-
-    if (sessionId && returnedLetterId) {
-      handlePostPayment(returnedLetterId);
-      window.history.replaceState({}, document.title, window.location.pathname);
-    }
-  }, []);
-
-  async function handlePostPayment(id: string) {
+  const handlePostPayment = useCallback(async (id: string, sessionId: string, mode: StripeMode) => {
     setStep('processing');
+    trackPageView('/payment/processing', 'Payment verification');
     setError(null);
+    let paymentVerified = false;
     try {
-      const { data: record, error: dbError } = await supabase
+      if (!FUNCTION_URL) {
+        throw new Error('Supabase is not configured. Add VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY.');
+      }
+      const supabaseClient = getSupabaseClient();
+
+      const verificationResponse = await fetch(`${FUNCTION_URL}/create-checkout`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+        },
+        body: JSON.stringify({
+          action: 'verify-payment',
+          letterId: id,
+          sessionId,
+          mode,
+        }),
+      });
+
+      if (!verificationResponse.ok) {
+        const errData = await verificationResponse.json().catch(() => ({}));
+        throw new Error(errData.error || 'Payment could not be verified.');
+      }
+
+      const verification = await verificationResponse.json();
+      if (!verification.verified) {
+        throw new Error('Payment could not be verified.');
+      }
+
+      paymentVerified = true;
+      trackEvent('payment_succeeded', { mode });
+      const { data: record, error: dbError } = await supabaseClient
         .from('resignation_letters')
         .select('*')
         .eq('id', id)
@@ -65,30 +87,61 @@ export default function App() {
 
       const letterRecord = record as ResignationLetter;
 
-      await supabase
-        .from('resignation_letters')
-        .update({ paid: true })
-        .eq('id', id);
-
       if (letterRecord.letter_text) {
         setLetter(letterRecord.letter_text);
-        setLetterId(id);
         setStep('output');
+        trackPageView('/letter', 'Your resignation letter');
       } else {
         const generated = await generateLetter(id, letterRecord);
         if (generated) {
           setLetter(generated);
-          setLetterId(id);
           setStep('output');
+          trackPageView('/letter', 'Your resignation letter');
         }
       }
     } catch (err) {
+      trackEvent(paymentVerified ? 'payment_return_processing_failed' : 'payment_verification_failed', { mode });
+      trackPageView('/payment/verification-failed', 'Payment verification failed');
       setError(err instanceof Error ? err.message : 'An unexpected error occurred');
       setStep('form');
     }
-  }
+  }, []);
+
+  useEffect(() => {
+    if (handledInitialQuery.current) return;
+    handledInitialQuery.current = true;
+
+    const params = new URLSearchParams(window.location.search);
+    const sessionId = params.get('session_id');
+    const returnedLetterId = params.get('letter_id');
+    const mode = normalizeStripeMode(params.get('mode'));
+    const cancelled = params.get('cancelled');
+
+    setStripeMode(mode);
+    if (cancelled) {
+      trackPageView('/payment/cancelled', 'Payment cancelled');
+      trackEvent('payment_cancelled', { mode });
+      window.history.replaceState({}, document.title, window.location.pathname);
+      return;
+    }
+
+    if (sessionId && returnedLetterId) {
+      trackPageView('/payment/return', 'Payment return');
+      trackEvent('payment_returned', { mode });
+      void handlePostPayment(returnedLetterId, sessionId, mode);
+      window.history.replaceState({}, document.title, window.location.pathname);
+      return;
+    }
+
+    trackPageView('/', 'Resignation letter form');
+  }, [handlePostPayment]);
 
   async function generateLetter(id: string, record: ResignationLetter): Promise<string | null> {
+    if (!FUNCTION_URL) {
+      throw new Error('Supabase is not configured. Add VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY.');
+    }
+
+    trackEvent('letter_generation_started');
     const response = await fetch(`${FUNCTION_URL}/generate-letter`, {
       method: 'POST',
       headers: {
@@ -106,15 +159,18 @@ export default function App() {
     });
 
     if (!response.ok) {
+      trackEvent('letter_generation_failed');
       const errData = await response.json().catch(() => ({}));
       throw new Error(errData.error || 'Letter generation failed');
     }
 
     const data = await response.json();
     if (!data.letter) {
+      trackEvent('letter_generation_failed');
       throw new Error('No letter content returned');
     }
 
+    trackEvent('letter_generation_succeeded');
     return data.letter as string;
   }
 
@@ -130,13 +186,21 @@ export default function App() {
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (!validate()) return;
+    trackEvent('form_submit_attempt', { mode: stripeMode });
+    if (!validate()) {
+      trackEvent('form_validation_failed');
+      return;
+    }
+
+    trackEvent('form_submitted', { mode: stripeMode, tone: formData.tone });
 
     setLoading(true);
     setError(null);
 
+    let stage: 'save_letter' | 'create_checkout' = 'save_letter';
     try {
-      const { data, error: insertError } = await supabase
+      const supabaseClient = getSupabaseClient();
+      const { data, error: insertError } = await supabaseClient
         .from('resignation_letters')
         .insert({
           manager_name: formData.managerName,
@@ -145,11 +209,13 @@ export default function App() {
           reason: formData.reason || null,
           tone: formData.tone,
           paid: false,
+          payment_status: 'pending',
         })
         .select()
         .single();
 
       if (insertError || !data) {
+        trackEvent('letter_save_failed', { mode: stripeMode });
         setError('Failed to save your details. Please try again.');
         setLoading(false);
         return;
@@ -157,7 +223,12 @@ export default function App() {
 
       const record = data as ResignationLetter;
       const newLetterId = record.id;
-      setLetterId(newLetterId);
+      trackEvent('letter_record_created', { mode: stripeMode });
+
+      if (!FUNCTION_URL) {
+        throw new Error('Supabase is not configured. Add VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY.');
+      }
+      stage = 'create_checkout';
 
       const response = await fetch(`${FUNCTION_URL}/create-checkout`, {
         method: 'POST',
@@ -167,7 +238,8 @@ export default function App() {
         },
         body: JSON.stringify({
           letterId: newLetterId,
-          formData,
+          mode: stripeMode,
+          gaClientId: getAnalyticsClientId(),
         }),
       });
 
@@ -178,11 +250,14 @@ export default function App() {
 
       const checkoutData = await response.json();
       if (checkoutData.url) {
+        trackEvent('checkout_session_created', { mode: stripeMode });
+        trackEvent('checkout_redirect_started', { mode: stripeMode });
         window.location.href = checkoutData.url;
       } else {
         throw new Error('No checkout URL returned');
       }
     } catch (err) {
+      trackEvent('checkout_flow_failed', { mode: stripeMode, stage });
       setError(err instanceof Error ? err.message : 'An unexpected error occurred');
       setLoading(false);
     }
@@ -190,13 +265,26 @@ export default function App() {
 
   function handleCopy() {
     if (!letter) return;
-    navigator.clipboard.writeText(letter);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
+    trackEvent('letter_copy_clicked');
+
+    if (!navigator.clipboard?.writeText) {
+      trackEvent('letter_copy_failed');
+      return;
+    }
+
+    void navigator.clipboard.writeText(letter).then(() => {
+      setCopied(true);
+      trackEvent('letter_copied');
+      setTimeout(() => setCopied(false), 2000);
+    }).catch(() => {
+      setError('Could not copy the letter. Please select and copy the text manually.');
+      trackEvent('letter_copy_failed');
+    });
   }
 
   function handleDownload() {
     if (!letter) return;
+    trackEvent('letter_downloaded');
     const blob = new Blob([letter], { type: 'text/plain' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -207,9 +295,10 @@ export default function App() {
   }
 
   function handleReset() {
+    trackEvent('create_another_letter_clicked');
     setStep('form');
+    trackPageView('/', 'Resignation letter form');
     setLetter(null);
-    setLetterId(null);
     setFormData({
       managerName: '',
       company: '',
@@ -220,6 +309,8 @@ export default function App() {
     setWaiverAccepted(false);
     setErrors({});
     setError(null);
+    formStarted.current = false;
+    setStripeMode('test');
   }
 
   if (step === 'processing') {
@@ -256,6 +347,7 @@ export default function App() {
               <div className="flex gap-2">
                 <button
                   onClick={handleCopy}
+                  type="button"
                   className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-slate-600 hover:text-slate-900 hover:bg-slate-100 rounded-lg transition-colors"
                 >
                   {copied ? <Check className="w-4 h-4 text-emerald-600" /> : <Copy className="w-4 h-4" />}
@@ -263,6 +355,7 @@ export default function App() {
                 </button>
                 <button
                   onClick={handleDownload}
+                  type="button"
                   className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-slate-600 hover:text-slate-900 hover:bg-slate-100 rounded-lg transition-colors"
                 >
                   <Download className="w-4 h-4" />
@@ -280,6 +373,7 @@ export default function App() {
           <div className="mt-6 flex flex-col sm:flex-row gap-3 justify-center">
             <button
               onClick={handleReset}
+              type="button"
               className="inline-flex items-center justify-center gap-2 px-6 py-3 bg-white border border-slate-300 text-slate-700 font-medium rounded-xl hover:bg-slate-50 transition-colors"
             >
               <RotateCcw className="w-4 h-4" />
@@ -332,7 +426,16 @@ export default function App() {
               </div>
             )}
 
-            <form onSubmit={handleSubmit} className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6 sm:p-8 space-y-6">
+            <form
+              onSubmit={handleSubmit}
+              onFocusCapture={() => {
+                if (!formStarted.current) {
+                  formStarted.current = true;
+                  trackEvent('form_started');
+                }
+              }}
+              className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6 sm:p-8 space-y-6"
+            >
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-2">
                   Manager's Name
@@ -408,7 +511,10 @@ export default function App() {
                     <button
                       key={t.value}
                       type="button"
-                      onClick={() => setFormData({ ...formData, tone: t.value })}
+                      onClick={() => {
+                        setFormData({ ...formData, tone: t.value });
+                        trackEvent('tone_selected', { tone: t.value });
+                      }}
                       className={`px-3 py-3 rounded-xl border text-sm font-medium transition-all text-center ${
                         formData.tone === t.value
                           ? 'border-slate-900 bg-slate-900 text-white'
@@ -429,7 +535,10 @@ export default function App() {
                   <input
                     type="checkbox"
                     checked={waiverAccepted}
-                    onChange={(e) => setWaiverAccepted(e.target.checked)}
+                    onChange={(e) => {
+                      setWaiverAccepted(e.target.checked);
+                      if (e.target.checked) trackEvent('disclaimer_accepted');
+                    }}
                     className="mt-0.5 w-4 h-4 rounded border-slate-300 text-slate-900 focus:ring-slate-900"
                   />
                   <span className="text-xs text-slate-600 leading-relaxed">
@@ -439,6 +548,14 @@ export default function App() {
                 </label>
                 {errors.waiver && <p className="text-red-500 text-xs mt-2">{errors.waiver}</p>}
               </div>
+
+              <PaymentModeSelector
+                mode={stripeMode}
+                onChange={(mode) => {
+                  setStripeMode(mode);
+                  trackEvent('stripe_mode_selected', { mode });
+                }}
+              />
 
               <button
                 type="submit"
