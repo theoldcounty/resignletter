@@ -17,6 +17,7 @@ const TONES: { value: Tone; label: string; description: string }[] = [
 
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL as string | undefined;
 const FUNCTION_URL = supabaseUrl ? `${supabaseUrl}/functions/v1` : null;
+const CHECKOUT_AVAILABLE = Boolean(FUNCTION_URL && import.meta.env.VITE_SUPABASE_ANON_KEY);
 
 async function generateLetter(id: string, sessionId: string, mode: StripeMode): Promise<string> {
   if (!FUNCTION_URL || !import.meta.env.VITE_SUPABASE_ANON_KEY) {
@@ -372,6 +373,12 @@ export default function App() {
               </div>
             )}
 
+            {!CHECKOUT_AVAILABLE && !paymentReturn && (
+              <div role="status" className="mb-6 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+                Preview only: test payments are not connected yet. The form is available to explore, but checkout is disabled until Supabase is configured.
+              </div>
+            )}
+
             {paymentReturn ? (
               <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6 sm:p-8">
                 <h2 className="text-xl font-semibold text-slate-900">Finish retrieving your letter</h2>
@@ -535,7 +542,7 @@ export default function App() {
 
               <button
                 type="submit"
-                disabled={loading}
+                disabled={loading || !CHECKOUT_AVAILABLE}
                 className="w-full bg-slate-900 text-white font-semibold py-4 rounded-xl hover:bg-slate-800 transition-colors flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {loading ? (
