@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import type { LetterFormData } from '@/lib/supabase';
 import { getAnalyticsClientId, trackEvent, trackPageView } from '@/lib/analytics';
 import { PaymentModeIndicator } from '@/components/PaymentModeIndicator';
-import { isCheckoutEnabled, normalizeStripeMode, type StripeMode } from '@/lib/paymentMode';
+import { normalizeStripeMode, type StripeMode } from '@/lib/paymentMode';
 import { FileText, Briefcase, Calendar, User, MessageSquare, Sparkles, Copy, Download, Check, ArrowRight, Shield, RotateCcw, Loader2 } from 'lucide-react';
 
 type Step = 'form' | 'processing' | 'output';
@@ -18,11 +18,6 @@ const TONES: { value: Tone; label: string; description: string }[] = [
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL as string | undefined;
 const FUNCTION_URL = supabaseUrl ? `${supabaseUrl}/functions/v1` : null;
 const PAYMENT_MODE = normalizeStripeMode(import.meta.env.VITE_PAYMENT_MODE);
-const CHECKOUT_AVAILABLE = isCheckoutEnabled(
-  import.meta.env.VITE_ENABLE_CHECKOUT,
-  supabaseUrl,
-  import.meta.env.VITE_SUPABASE_ANON_KEY,
-);
 
 async function generateLetter(id: string, sessionId: string, mode: StripeMode): Promise<string> {
   if (!FUNCTION_URL || !import.meta.env.VITE_SUPABASE_ANON_KEY) {
@@ -368,20 +363,11 @@ export default function App() {
               <p className="text-slate-500 mt-3 text-lg">
                 Professional, clean, and respectful. No bridges burned.
               </p>
-              <div className="mt-4">
-                <PaymentModeIndicator mode={PAYMENT_MODE} />
-              </div>
             </div>
 
             {error && (
               <div role="alert" className="mb-6 bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-xl text-sm">
                 {error}
-              </div>
-            )}
-
-            {!CHECKOUT_AVAILABLE && !paymentReturn && (
-              <div role="status" className="mb-6 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
-                Preview only: checkout is paused until the secure payment setup is complete. You can explore the form, but no payment can be started here.
               </div>
             )}
 
@@ -538,9 +524,13 @@ export default function App() {
                 {errors.waiver && <p className="text-red-500 text-xs mt-2">{errors.waiver}</p>}
               </div>
 
+              <div className="flex justify-center">
+                <PaymentModeIndicator mode={PAYMENT_MODE} />
+              </div>
+
               <button
                 type="submit"
-                disabled={loading || !CHECKOUT_AVAILABLE}
+                disabled={loading}
                 className="w-full bg-slate-900 text-white font-semibold py-4 rounded-xl hover:bg-slate-800 transition-colors flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {loading ? (
@@ -550,7 +540,7 @@ export default function App() {
                   </>
                 ) : (
                   <>
-                    {PAYMENT_MODE === 'test' ? 'Try Test Checkout — no charge' : 'Generate Letter — £1'}
+                    Continue to Stripe Checkout
                     <ArrowRight className="w-5 h-5" />
                   </>
                 )}
@@ -574,7 +564,7 @@ export default function App() {
                 <div className="w-8 h-8 bg-slate-100 rounded-full flex items-center justify-center mx-auto mb-2">
                   <span className="text-sm font-bold text-slate-600">2</span>
                 </div>
-                <p className="text-xs text-slate-500">{PAYMENT_MODE === 'test' ? 'Test checkout' : 'Pay £1 securely'}</p>
+                <p className="text-xs text-slate-500">Stripe checkout</p>
               </div>
               <div className="px-2">
                 <div className="w-8 h-8 bg-slate-100 rounded-full flex items-center justify-center mx-auto mb-2">

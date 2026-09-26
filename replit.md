@@ -13,7 +13,7 @@ Set these Replit Secrets before using the app:
 - `VITE_SUPABASE_URL`
 - `VITE_SUPABASE_ANON_KEY`
 
-Checkout is disabled by default. Set `VITE_ENABLE_CHECKOUT=true` only after the security migration is applied, the Supabase functions are deployed, and a full Stripe test payment and letter delivery have been verified. Both frontend settings above are also required. For a static publish, Vite embeds these values during the build; after changing them, publish again so the live build receives them.
+The checkout button is visible in Preview. It needs both frontend settings above and deployed Supabase Edge Functions to start a real Stripe Sandbox session. Without them, submission shows a configuration error rather than charging anyone. For a static publish, Vite embeds these values during the build; after changing them, publish again so the live build receives them.
 
 The owner chooses the payment environment before publishing with `VITE_PAYMENT_MODE=test` (default, shown as **Sandbox**) or `VITE_PAYMENT_MODE=live` (shown as **Live Payments**). Visitors see the environment but cannot switch it. Set the Supabase Edge Function setting `PAYMENT_MODE` to the same value; it defaults to `test` and refuses checkout requests that disagree with its setting. To change environments, update both settings and publish the frontend again. Payment returns from earlier checkouts can still be verified in their original mode.
 
@@ -30,7 +30,7 @@ The checkout Edge Function expects these secrets in Supabase Edge Function setti
 - `GA4_API_SECRET` (needed for server-side purchase/failure events)
 - `APP_BASE_URL` (the trusted HTTPS app origin for Stripe return URLs; set it to the preview origin while testing, then the actual published origin after publishing)
 
-Never put Stripe secret keys in source files, `.env`, or GitHub. The test/live product and price IDs are public identifiers in `supabase/functions/_shared/payment.ts`; the Google Analytics measurement ID is in `index.html`.
+Never put Stripe secret keys in source files, `.env`, or GitHub. Use secure settings, and rotate any key that has been pasted into a chat or document. The test/live product and price IDs are public identifiers in `supabase/functions/_shared/payment.ts`; the Google Analytics measurement ID is in `index.html`.
 
 The app includes a Google Analytics consent choice. Page views and interaction events are sent only after the visitor allows analytics; names, company names, letter text, Stripe checkout/payment IDs, letter IDs, and raw query identifiers are not sent.
 
