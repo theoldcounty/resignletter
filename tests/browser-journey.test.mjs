@@ -228,6 +228,28 @@ test('an incomplete form explains why checkout did not start beside the button',
   }
 });
 
+test('Google tag is configured with the site measurement ID and loads only after analytics consent', async () => {
+  const context = await browser.newContext();
+  const page = await context.newPage();
+  try {
+    await page.route('https://www.googletagmanager.com/gtag/js?id=G-HF4121ZYTH', (route) =>
+      route.fulfill({ status: 200, contentType: 'application/javascript', body: '' }));
+    await page.goto(baseUrl);
+    assert.equal(await page.locator('script[src*="googletagmanager.com/gtag/js"]').count(), 0);
+    const initialCommands = await page.evaluate(() => window.dataLayer.map((args) => [args[0], args[1]]));
+    assert.equal(initialCommands.some(([command, id]) => command === 'config' && id === 'G-HF4121ZYTH'), true);
+
+    await page.getByRole('button', { name: 'Allow analytics' }).click();
+    const loader = page.locator('script[data-ga4-loader]');
+    await loader.waitFor({ state: 'attached' });
+    assert.equal(await loader.getAttribute('src'), 'https://www.googletagmanager.com/gtag/js?id=G-HF4121ZYTH');
+    const commands = await page.evaluate(() => window.dataLayer.map((args) => [args[0], args[1]]));
+    assert.equal(commands.filter(([command, id]) => command === 'config' && id === 'G-HF4121ZYTH').length, 1);
+  } finally {
+    await context.close();
+  }
+});
+
 test('live configuration displays Live and sends only live-mode checkout requests', async () => {
   const liveUrl = 'http://127.0.0.1:5200';
   const liveServer = spawn(process.execPath, ['node_modules/vite/bin/vite.js', '--host', '127.0.0.1', '--port', '5200', '--strictPort'], {

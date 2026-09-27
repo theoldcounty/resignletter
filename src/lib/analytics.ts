@@ -8,7 +8,6 @@ const GA_MEASUREMENT_ID = typeof import.meta.env === 'undefined'
   : import.meta.env.VITE_GA_MEASUREMENT_ID;
 
 let gaScriptRequested = false;
-let gaConfigured = false;
 
 declare global {
   interface Window {
@@ -54,12 +53,6 @@ function initializeGoogleAnalytics(): void {
       document.head.appendChild(script);
     }
     gaScriptRequested = true;
-  }
-
-  if (!gaConfigured) {
-    window.gtag?.('js', new Date());
-    window.gtag?.('config', GA_MEASUREMENT_ID, { send_page_view: false });
-    gaConfigured = true;
   }
 }
 
