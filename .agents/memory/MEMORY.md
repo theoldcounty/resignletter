@@ -1,3 +1,4 @@
 - [Stripe Sandbox browser checks](stripe-sandbox-browser-checks.md) — Stripe's preselected Link option can require a phone despite valid test-card fields.
 - [pdfmake browser imports](pdfmake-browser-imports.md) — Vite wraps pdfmake's browser module; verify an actual PDF download, not just a document definition.
 - [Protected Replit config edits](protected-replit-config.md) — direct .replit patches are blocked; validate a full temporary TOML replacement.
+- [GitHub connector sync](github-connector-sync.md) — API commits can work when shell Git times out; verify tree equality and avoid force updates.
