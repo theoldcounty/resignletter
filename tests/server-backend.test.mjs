@@ -176,7 +176,6 @@ test('live checkout uses the live configured price and rejects sandbox requests'
   const liveEnv = {
     ...env,
     STRIPE_MODE: 'live',
-    STRIPE_LIVE_WEBHOOK_SECRET: 'whsec_test_only',
     STRIPE_TEST_PRICE_ID: 'price_test_configured',
     STRIPE_LIVE_PRICE_ID: 'price_live_configured',
   };
@@ -192,6 +191,7 @@ test('live checkout uses the live configured price and rejects sandbox requests'
       sessions: {
         create: async (params) => {
           assert.equal(params.line_items[0].price, 'price_live_configured');
+          assert.deepEqual(params.payment_method_types, ['card']);
           assert.equal(params.metadata.stripe_price_id, 'price_live_configured');
           assert.match(params.success_url, /mode=live/);
           return { id: 'cs_live_example', url: 'https://checkout.stripe.test/live' };
@@ -222,13 +222,18 @@ test('live checkout uses the live configured price and rejects sandbox requests'
   assert.deepEqual(modes, ['live']);
 });
 
-test('live checkout cannot take payment until its webhook signing secret is configured', async () => {
+test('live checkout works without a webhook signing secret', async () => {
+  let created = 0;
   const app = createApp({
     env: { ...env, STRIPE_MODE: 'live', STRIPE_LIVE_WEBHOOK_SECRET: undefined },
-    store: createStore({
-      createPendingLetter: async () => { throw new Error('must not create a payment record'); },
+    store: createStore(),
+    getStripeClient: async () => ({
+      checkout: { sessions: { create: async (params) => {
+        created += 1;
+        assert.deepEqual(params.payment_method_types, ['card']);
+        return { id: 'cs_live_example', url: 'https://checkout.stripe.test/live' };
+      } } },
     }),
-    getStripeClient: async () => { throw new Error('must not call Stripe'); },
   });
   await withApp(app, async (base) => {
     const response = await fetch(`${base}/api/checkout`, {
@@ -236,9 +241,10 @@ test('live checkout cannot take payment until its webhook signing secret is conf
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ mode: 'live', form: validForm }),
     });
-    assert.equal(response.status, 503);
-    assert.match((await response.json()).error, /webhook.*no payment was taken/i);
+    assert.equal(response.status, 200);
+    assert.deepEqual(await response.json(), { url: 'https://checkout.stripe.test/live', mode: 'live' });
   });
+  assert.equal(created, 1);
 });
 
 test('checkout ignores forged payment fields and uses trusted letter data', async () => {

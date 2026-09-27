@@ -98,6 +98,9 @@ export function checkoutSessionParams(
   if (gaClientId) metadata.ga_client_id = gaClientId;
   return {
     mode: 'payment' as const,
+    // Only synchronous card payments: without webhooks, delayed payment methods
+    // cannot reliably trigger fulfillment when the buyer leaves Checkout.
+    payment_method_types: ['card' as const],
     line_items: [{ price, quantity: 1 }],
     metadata,
     payment_intent_data: { metadata },

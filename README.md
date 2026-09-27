@@ -13,11 +13,11 @@ ResignLetter helps a visitor write a professional resignation letter. They enter
 3. On return, the server retrieves the session from Stripe. It checks the saved session, letter reference, payment mode, paid status, original Price ID, and the actual purchased line item before releasing anything. A cancelled or unverified checkout does not generate a letter.
 4. The server requests the letter from OpenAI and saves the text and generation timestamp. The result displays the saved letter, with TXT and styled A4 PDF downloads. The date is the **generation date**, not the current download date; optional address blocks appear only when supplied.
 5. If a verified payment cannot produce a letter, the server requests a full, idempotent Stripe refund. The customer sees whether Stripe confirmed it, it remains pending, or its status could not be confirmed. A refunded purchase cannot later generate a letter.
-6. Signed webhooks update payment state. An in-process reconciliation loop can finish an interrupted **returned** journey. While the server is running, a verified paid checkout that never returned gets ten minutes to return, then is refunded rather than producing a letter its buyer cannot access. Unconfirmed refunds are retried and logged for manual resolution. **Autoscale may sleep when idle, so this ten-minute timing is not guaranteed in production without an always-on process or an external scheduled worker.**
+6. No webhook is required for checkout: the app offers synchronous card payments and verifies a returned session directly with Stripe. An in-process reconciliation loop can finish an interrupted **returned** journey. While the server is running, it checks a paid checkout that never returned and attempts a refund after ten minutes. Unconfirmed refunds are retried and logged for manual resolution. **Autoscale may sleep when idle, so a customer who pays and closes the page may not receive a prompt refund—or any letter—until the server runs again.**
 
 ### Pricing
 
-One-time **£1 GBP per letter**. No subscription, stored card, or account. Development uses Stripe Sandbox; the production configuration is set to Stripe Live. Publishing the server app with a configured Live webhook enables real £1 payments. No Live payment or refund was performed during development verification.
+One-time **£1 GBP per letter**. No subscription, stored card, or account. Development uses Stripe Sandbox; the production configuration is set to Stripe Live. Publishing the server app enables real £1 card payments without a webhook. No Live payment or refund was performed during development verification.
 
 ## Features and enhancements in 2.0
 
@@ -25,9 +25,9 @@ One-time **£1 GBP per letter**. No subscription, stored card, or account. Devel
 - Print-ready A4 PDF with saved date and address layout, plus the original TXT download and copy action.
 - Verified, mode-specific Stripe checkout with the purchased line item checked against the stored original Price ID; rotating a configured price does not strand earlier purchases.
 - Persisted letters for retrying the return URL, including compatibility with older saved letters that have no recorded sender or generation date.
-- Background completion for interrupted returns, and an automatic refund path for a paid checkout with no observed return.
+- In-process completion for interrupted returns and a best-effort refund path for a paid checkout with no observed return; on Autoscale, this check can be delayed while idle.
 - Idempotent refund attempts that distinguish **confirmed**, **pending**, and **unconfirmed** Stripe outcomes.
-- Consent-gated analytics and server-side, signature-verified webhook handling.
+- Consent-gated analytics. An optional, signature-verified webhook endpoint remains in the code but is not required or configured for checkout.
 - ResignLetter-specific page title, description, canonical URL, social titles/descriptions, and favicon instead of starter assets.
 
 ## Site structure
@@ -42,7 +42,7 @@ This is a single-page React site backed by Express; there is no account dashboar
 | `/api/health` | Server health response. |
 | `/api/checkout` | Validates the form and configured environment, creates a saved pending letter and Stripe-hosted Checkout Session. |
 | `/api/verify-payment`, `/api/generate-letter` | Verify the paid session and deliver or retrieve the saved letter. |
-| `/api/stripe/webhook` | Raw-body, signature-checked Stripe event endpoint. |
+| `/api/stripe/webhook` | Optional raw-body, signature-checked Stripe event endpoint; unused without a signing secret. |
 
 ### Repository layout
 
@@ -96,7 +96,7 @@ The tracked `.replit` configuration has `STRIPE_MODE=test` in **development** an
 | --- | --- |
 | `STRIPE_TEST_SECRET_KEY` | Sandbox server SDK key (`sk_test_`). |
 | `STRIPE_LIVE_SECRET_KEY` | Live server SDK key (`sk_live_`); rotate any key previously exposed in chat. |
-| `STRIPE_TEST_WEBHOOK_SECRET`, `STRIPE_LIVE_WEBHOOK_SECRET` | Stripe endpoint signing secrets (`whsec_`) for `/api/stripe/webhook`, each from its matching mode and endpoint. Live checkout refuses to start without its signing secret. |
+| `STRIPE_TEST_WEBHOOK_SECRET`, `STRIPE_LIVE_WEBHOOK_SECRET` | Optional signing secrets (`whsec_`) if Stripe webhooks are configured later; neither is needed for Live card checkout. |
 | `OPENAI_API_KEY` | Required to enable checkout; server-only letter generation. |
 | `GA4_API_SECRET` | Optional consented GA4 Measurement Protocol events. |
 
@@ -120,20 +120,19 @@ The automated suite checks form validation, payment gating, mode and line-item v
 
 - A buyer who loses the private return URL cannot independently recover a saved letter. A secure, short-lived recovery flow is a future enhancement; avoid public ID lookups.
 - Refunds that remain unconfirmed are retried and logged, but there is no dedicated operator alert yet. Add monitoring and a safe manual-resolution workflow before depending on unattended operations.
-- The current in-process reconciliation timer is not guaranteed to run while an Autoscale deployment is idle. A Reserved VM or an independently scheduled reconciliation worker is required for dependable no-return refunds; choosing the deployment type may affect running costs.
+- On the chosen Autoscale hosting, the in-process reconciliation timer does not run reliably while idle. A successful card payment followed by a closed browser may leave the buyer without a letter, and its refund may be delayed until another request wakes the server. This limitation was accepted for launch; a Reserved VM, scheduled worker, or a webhook would reduce the risk.
 - PDF text is generated from the AI response and the known form fields; review the result before sending it to an employer.
 - Add an owned social preview image and verify the production domain before updating sharing metadata.
 
 ## Publishing status and checklist
 
-The currently configured deployment target is **Autoscale** (`npm run build` then `npm run start`). A reliable refund timer requires a **Reserved VM** or an independently scheduled worker instead. The currently published site is still **static**; a GitHub push does not publish the new server app.
+The configured deployment target is **Autoscale** (`npm run build` then `npm run start`). The currently published site is still **static**; a GitHub push does not publish the new server app. On the selected Autoscale hosting, reconciliation of paid checkouts with no return is best effort, not guaranteed on a ten-minute schedule.
 
-**Not ready to publish for Live payments yet.** Before clicking Publish:
+Before clicking Publish to enable real payments:
 
 1. Confirm the currently configured Live key is a **rotated**, unexposed `sk_live_` key. A read-only Stripe call accepted a Live key and confirmed the configured price was an active one-time £1 GBP price; it cannot establish that the old exposed key was rotated.
-2. Configure Live and Sandbox Stripe webhook endpoints at their respective `/api/stripe/webhook` URLs, store their matching `whsec_` secrets in Replit Secrets, and verify a signed Sandbox event. Live checkout is deliberately blocked until the Live signing secret is present.
-3. Choose an always-on Reserved VM or implement a separately scheduled reconciliation worker. Autoscale alone cannot guarantee the ten-minute refund check when there is no traffic. Agree on the cost/operational tradeoff before changing the deployment target.
-4. Check the production OpenAI secret and database/schema setup, publish the server app on the chosen target, and verify the published health endpoint and return URLs. Publish transfers the development schema; do not apply the SQL migration by hand in production.
-5. Confirm the actual Live payment, letter, and refund process under a separately authorized, controlled launch procedure. Do not infer Live success from Sandbox testing or perform an unrequested Live charge.
+2. Confirm the accepted Autoscale tradeoff: if a paid customer does not return, the app may not notice and refund promptly while idle. No webhooks are configured or needed for returned synchronous card payments.
+3. Check the production OpenAI secret and database/schema setup, publish the **server** app, and verify the published health endpoint and return URLs. Publish transfers the development schema; do not apply the SQL migration by hand in production.
+4. Confirm the actual Live payment, letter, and refund process under a separately authorized, controlled launch procedure. Do not infer Live success from Sandbox testing or perform an unrequested Live charge.
 
-If webhook setup or production validation is incomplete, keep the site unpublished in this configuration. The development preview remains in Sandbox.
+The development preview remains in Sandbox. Publishing the server app with the Live Stripe key begins accepting real £1 payments; GitHub pushes alone do not.

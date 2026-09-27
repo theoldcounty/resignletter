@@ -217,9 +217,6 @@ export function createApp(dependencies: Dependencies = {}): Express {
     if (!env.OPENAI_API_KEY) {
       return res.status(503).json({ error: 'Letter generation is not configured. Please try later; no payment was taken.' });
     }
-    if (mode === 'live' && !env.STRIPE_LIVE_WEBHOOK_SECRET?.startsWith('whsec_')) {
-      return res.status(503).json({ error: 'Live webhook signing is not configured. Please try later; no payment was taken.' });
-    }
 
     let stripe: Stripe;
     try {
