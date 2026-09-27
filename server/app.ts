@@ -82,6 +82,7 @@ async function createLetterWithAI(
   if (!env.OPENAI_API_KEY) return { error: 'AI service is not configured.', status: 503 as const };
   const response = await fetcher('https://api.openai.com/v1/chat/completions', {
     method: 'POST',
+    signal: AbortSignal.timeout(30_000),
     headers: {
       'Content-Type': 'application/json',
       Authorization: `Bearer ${env.OPENAI_API_KEY}`,
@@ -91,11 +92,11 @@ async function createLetterWithAI(
       messages: [
         {
           role: 'system',
-          content: 'You are an HR advisor. Write a professional resignation letter. Include a formal greeting, clear resignation, last working day, brief thanks, and offer to help transition. Keep it under 250 words and match the requested tone. Return ONLY valid JSON: {"letter":"full text here"}.',
+          content: 'You are an HR advisor. Write a professional resignation letter. Include a formal greeting, clear resignation, last working day, brief thanks, offer to help transition, and a closing signed with the sender name. Keep it under 250 words and match the requested tone. Do not include a date or any address blocks; the app formats those separately. Return ONLY valid JSON: {"letter":"full text here"}.',
         },
         {
           role: 'user',
-          content: `Manager: ${record.manager_name}\nCompany: ${record.company}\nLast Day: ${record.last_day}\nReason: ${record.reason || 'Not provided'}\nTone: ${record.tone}`,
+          content: `Sender: ${record.sender_name || 'Employee'}\nManager: ${record.manager_name}\nCompany: ${record.company}\nLast Day: ${record.last_day}\nReason: ${record.reason || 'Not provided'}\nTone: ${record.tone}`,
         },
       ],
       response_format: { type: 'json_object' },
@@ -179,6 +180,12 @@ export function createApp(dependencies: Dependencies = {}): Express {
       const analyticsSent = updated
         ? await sendPaymentAnalytics(status, mode, metadata ?? {}, object, env, fetcher)
         : false;
+      if (updated && status === 'paid') {
+        setImmediate(() => {
+          void (app.locals.reconcileOutstanding as () => Promise<void>)()
+            .catch(() => console.warn('Paid webhook fulfillment check failed; it will retry.'));
+        });
+      }
       return res.json({ received: true, processed: updated, status: updated ? status : undefined, analyticsSent });
     } catch {
       return res.status(500).json({ error: 'Could not process Stripe webhook.' });
@@ -199,12 +206,19 @@ export function createApp(dependencies: Dependencies = {}): Express {
     if (!form) return res.status(400).json({ error: 'Please check the letter details and try again.' });
     const origin = appOrigin(env);
     if (!origin) return res.status(503).json({ error: 'The app return URL is not configured.' });
+    let priceId: string;
     try {
-      stripePriceId(mode, env);
+      priceId = stripePriceId(mode, env);
     } catch {
       return res.status(503).json({
         error: `${mode === 'test' ? 'STRIPE_TEST_PRICE_ID' : 'STRIPE_LIVE_PRICE_ID'} is not configured correctly.`,
       });
+    }
+    if (!env.OPENAI_API_KEY) {
+      return res.status(503).json({ error: 'Letter generation is not configured. Please try later; no payment was taken.' });
+    }
+    if (mode === 'live' && !env.STRIPE_LIVE_WEBHOOK_SECRET?.startsWith('whsec_')) {
+      return res.status(503).json({ error: 'Live webhook signing is not configured. Please try later; no payment was taken.' });
     }
 
     let stripe: Stripe;
@@ -223,7 +237,7 @@ export function createApp(dependencies: Dependencies = {}): Express {
       : undefined;
 
     try {
-      const letterId = await store.createPendingLetter(form, mode, gaClientId);
+      const letterId = await store.createPendingLetter(form, mode, gaClientId, priceId);
       const session = await stripe.checkout.sessions.create(checkoutSessionParams(origin, letterId, mode, gaClientId, env));
       if (!session.id || !session.url) return res.status(502).json({ error: 'Stripe did not provide a checkout link.' });
       if (!await store.setCheckoutSession(letterId, session.id)) {
@@ -239,7 +253,7 @@ export function createApp(dependencies: Dependencies = {}): Express {
     letterId: unknown,
     sessionId: unknown,
     mode: unknown,
-  ): Promise<{ verified: true; mode: StripeMode } | { error: string; status: number }> {
+  ): Promise<{ verified: true; mode: StripeMode; paymentIntentId: string | null } | { error: string; status: number }> {
     if (!isStripeMode(mode) || typeof letterId !== 'string' || !UUID.test(letterId) ||
       typeof sessionId !== 'string' || !sessionId.startsWith('cs_') || sessionId.length > 255) {
       return { error: 'A valid paid checkout is required.', status: 400 as const };
@@ -247,14 +261,6 @@ export function createApp(dependencies: Dependencies = {}): Express {
     const configuredMode = stripeModeFromEnvironment(env);
     if (!configuredMode) return { error: 'Payment environment is not configured correctly.', status: 503 as const };
     if (mode !== configuredMode) return { error: 'Payment is not available in this environment.', status: 409 as const };
-    try {
-      stripePriceId(mode, env);
-    } catch {
-      return {
-        error: `${mode === 'test' ? 'STRIPE_TEST_PRICE_ID' : 'STRIPE_LIVE_PRICE_ID'} is not configured correctly.`,
-        status: 503 as const,
-      };
-    }
     const record = await store.getLetter(letterId);
     if (!record || record.payment_mode !== mode || record.stripe_session_id !== sessionId) {
       return { error: 'Letter or checkout session not found.', status: 404 as const };
@@ -274,49 +280,192 @@ export function createApp(dependencies: Dependencies = {}): Express {
     } catch {
       return { error: 'Payment could not be verified. Please retry.', status: 502 as const };
     }
-    if (!isVerifiedCheckoutSession(session, letterId, sessionId, mode, env)) {
+    const expectedPriceId = record.stripe_price_id || session.metadata?.stripe_price_id;
+    if (!expectedPriceId || !/^price_[A-Za-z0-9_]+$/.test(expectedPriceId) ||
+      !isVerifiedCheckoutSession(session, letterId, sessionId, mode, env, expectedPriceId)) {
       return { error: 'Payment could not be verified.', status: 402 as const };
     }
-    if (!await store.recordPaid(letterId, sessionId, mode, paymentIntentId(session.payment_intent))) {
+    try {
+      const items = await stripe.checkout.sessions.listLineItems(sessionId, { limit: 100 });
+      if (items.has_more || items.data.length !== 1 ||
+        items.data[0].price?.id !== expectedPriceId || items.data[0].quantity !== 1) {
+        return { error: 'Payment price could not be verified.', status: 402 as const };
+      }
+    } catch {
+      return { error: 'Payment price could not be verified. Please retry.', status: 502 as const };
+    }
+    const intentId = paymentIntentId(session.payment_intent);
+    if (record.payment_status !== 'refund_pending' && record.payment_status !== 'refunded' &&
+      !await store.recordPaid(letterId, sessionId, mode, intentId)) {
       return { error: 'Payment could not be recorded. Please retry.', status: 409 as const };
     }
-    return { verified: true as const, mode };
+    return { verified: true as const, mode, paymentIntentId: intentId };
+  }
+
+  async function refundFailedLetter(
+    letterId: string,
+    sessionId: string,
+    mode: StripeMode,
+    intentId: string | null,
+    requireUnreturned = false,
+  ): Promise<{ error: string; refundStatus: 'refunded' | 'pending' | 'unconfirmed' }> {
+    const current = await store.getLetter(letterId);
+    if (current?.payment_status === 'refunded') {
+      return { error: 'We could not create your letter. Refund confirmed by Stripe; it may take several business days to appear on your card.', refundStatus: 'refunded' };
+    }
+    if (!await store.claimRefund(letterId, sessionId, mode, requireUnreturned)) {
+      return { error: 'We could not create your letter. The refund could not be confirmed. Please check again or contact support before paying again.', refundStatus: 'unconfirmed' };
+    }
+    const paymentIntent = intentId || current?.stripe_payment_intent_id;
+    if (!paymentIntent) {
+      console.warn('A paid letter needs manual refund resolution because no payment intent is available.');
+      return { error: 'We could not create your letter. The refund could not be confirmed. Please contact support before paying again.', refundStatus: 'unconfirmed' };
+    }
+    try {
+      const stripe = await getClient(mode);
+      const existing = await stripe.refunds.list({ payment_intent: paymentIntent, limit: 100 });
+      const related = existing.data.filter((refund) => refund.metadata?.letter_id === letterId);
+      const prior = related.find((refund) => refund.status === 'succeeded') ??
+        related.find((refund) => refund.status === 'pending' || refund.status === 'requires_action');
+      const refund = prior ?? await stripe.refunds.create(
+        { payment_intent: paymentIntent, reason: 'requested_by_customer', metadata: { letter_id: letterId, reason: 'letter_generation_failed' } },
+        { idempotencyKey: `letter-generation-${letterId}${related.length ? `-retry-${related.length}` : ''}` },
+      );
+      if (refund.status === 'succeeded') {
+        if (!await store.markRefunded(letterId, sessionId, mode) &&
+          (await store.getLetter(letterId))?.payment_status !== 'refunded') {
+          console.warn('Stripe confirmed a refund but the local refund state could not be saved; it will retry.');
+        }
+        return { error: 'We could not create your letter. Refund confirmed by Stripe; it may take several business days to appear on your card.', refundStatus: 'refunded' };
+      }
+      if (refund.status === 'pending') {
+        return { error: 'We could not create your letter. Stripe accepted a refund request, but the refund is still pending. Check its status here before paying again.', refundStatus: 'pending' };
+      }
+    } catch {
+      // Never describe a refund as confirmed when Stripe did not confirm it.
+    }
+    return { error: 'We could not create your letter. The refund could not be confirmed. Check its status here or contact support before paying again.', refundStatus: 'unconfirmed' };
+  }
+
+  function letterResponse(record: NonNullable<Awaited<ReturnType<Store['getLetter']>>>) {
+    return {
+      letter: record.letter_text,
+      details: {
+        senderName: record.sender_name || '',
+        homeAddress: record.home_address,
+        officeAddress: record.office_address,
+        generatedAt: record.letter_generated_at,
+      },
+    };
   }
 
   app.post('/api/verify-payment', async (req, res) => {
     try {
       const result = await verifyPayment(req.body?.letterId, req.body?.sessionId, req.body?.mode);
       if ('error' in result) return res.status(result.status).json({ error: result.error });
-      return res.json(result);
+      await store.markReturnSeen(req.body.letterId, req.body.sessionId, result.mode);
+      return res.json({ verified: true, mode: result.mode });
     } catch {
       return res.status(500).json({ error: 'Payment could not be verified. Please retry.' });
     }
   });
 
-  app.post('/api/generate-letter', async (req, res) => {
-    const { letterId, sessionId, mode } = req.body ?? {};
+  async function deliverLetter(
+    letterId: unknown,
+    sessionId: unknown,
+    mode: unknown,
+    fromCustomer = false,
+  ): Promise<{ status: number; body: Record<string, unknown> }> {
     try {
       const verification = await verifyPayment(letterId, sessionId, mode);
-      if ('error' in verification) return res.status(verification.status).json({ error: verification.error });
-      const record = await store.getLetter(letterId);
-      if (!record || record.payment_status !== 'paid') {
-        return res.status(409).json({ error: 'Payment has not been recorded yet. Please retry.' });
+      if ('error' in verification) return { status: verification.status, body: { error: verification.error } };
+      const id = letterId as string;
+      const session = sessionId as string;
+      if (fromCustomer) await store.markReturnSeen(id, session, verification.mode);
+      const record = await store.getLetter(id);
+      if (!record) {
+        return { status: 409, body: { error: 'Payment has not been recorded yet. Please retry.' } };
       }
-      if (record.letter_text) return res.json({ letter: record.letter_text });
+      if (record.payment_status === 'refunded' || record.payment_status === 'refund_pending') {
+        return { status: 503, body: await refundFailedLetter(id, session, verification.mode, verification.paymentIntentId) };
+      }
+      if (record.payment_status !== 'paid') {
+        return { status: 409, body: { error: 'Payment has not been recorded yet. Please retry.' } };
+      }
+      if (record.letter_text) return { status: 200, body: letterResponse(record) };
 
-      const generated = await createLetterWithAI(record, env, fetcher);
-      if ('error' in generated) return res.status(generated.status).json({ error: generated.error });
-      if (!await store.saveLetterText(letterId, generated.letter)) {
-        const latest = await store.getLetter(letterId);
-        if (!latest?.letter_text || latest.payment_status !== 'paid') {
-          return res.status(500).json({ error: 'Could not save your letter. Please retry.' });
-        }
-        return res.json({ letter: latest.letter_text });
+      let generated: Awaited<ReturnType<typeof createLetterWithAI>>;
+      try {
+        generated = await createLetterWithAI(record, env, fetcher);
+      } catch {
+        generated = { error: 'Letter generation failed.', status: 502 };
       }
-      return res.json({ letter: generated.letter });
+      if ('error' in generated) {
+        return { status: 503, body: await refundFailedLetter(id, session, verification.mode, verification.paymentIntentId) };
+      }
+      if (!await store.saveLetterText(id, generated.letter)) {
+        const latest = await store.getLetter(id);
+        if (!latest?.letter_text || latest.payment_status !== 'paid') {
+          return { status: 503, body: await refundFailedLetter(id, session, verification.mode, verification.paymentIntentId) };
+        }
+        return { status: 200, body: letterResponse(latest) };
+      }
+      const saved = await store.getLetter(id);
+      if (!saved?.letter_text) return { status: 500, body: { error: 'The letter was saved but could not be retrieved. Please retry.' } };
+      return { status: 200, body: letterResponse(saved) };
     } catch {
-      return res.status(500).json({ error: 'Could not prepare your letter. Please retry.' });
+      return { status: 500, body: { error: 'Could not prepare your letter. Please retry.' } };
     }
+  }
+
+  let reconciling = false;
+  app.locals.reconcileOutstanding = async () => {
+    if (reconciling) return;
+    reconciling = true;
+    try {
+      const rows = await store.claimOutstanding();
+      const configuredMode = stripeModeFromEnvironment(env);
+      await Promise.all(rows.map(async (row) => {
+        if (row.payment_mode !== configuredMode) return;
+        if (!row.return_seen_at) {
+          const verification = await verifyPayment(row.id, row.stripe_session_id, row.payment_mode);
+          if ('error' in verification) {
+            if (verification.status >= 500) console.warn('An outstanding checkout could not be checked; it will retry.');
+            return;
+          }
+          const latest = await store.getLetter(row.id);
+          if (latest?.return_seen_at) {
+            await deliverLetter(row.id, row.stripe_session_id, row.payment_mode);
+            return;
+          }
+          if (!latest || latest.letter_text || !Number.isFinite(Date.parse(row.created_at))) return;
+          if (latest.payment_status === 'refund_pending' ||
+            Date.now() - Date.parse(row.created_at) >= 10 * 60_000) {
+            const refund = await refundFailedLetter(row.id, row.stripe_session_id, row.payment_mode, verification.paymentIntentId, true);
+            if (refund.refundStatus === 'unconfirmed') {
+              const returned = await store.getLetter(row.id);
+              if (returned?.return_seen_at) {
+                await deliverLetter(row.id, row.stripe_session_id, row.payment_mode);
+              } else {
+                console.warn('An unreturned paid checkout needs refund resolution.');
+              }
+            }
+          }
+          return;
+        }
+        const result = await deliverLetter(row.id, row.stripe_session_id, row.payment_mode);
+        if (result.status >= 500 && result.body.refundStatus !== 'refunded') {
+          console.warn('An outstanding paid letter needs another fulfillment or refund check.');
+        }
+      }));
+    } finally {
+      reconciling = false;
+    }
+  };
+
+  app.post('/api/generate-letter', async (req, res) => {
+    const { status, body } = await deliverLetter(req.body?.letterId, req.body?.sessionId, req.body?.mode, true);
+    return res.status(status).json(body);
   });
 
   return app;

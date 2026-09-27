@@ -58,4 +58,4 @@ GA_MEASUREMENT_ID = "G-HF4121ZYTH"
 STRIPE_MODE = "test"
 
 [userenv.production]
-STRIPE_MODE = "test"
+STRIPE_MODE = "live"

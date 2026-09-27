@@ -1,9 +1,12 @@
 export type StripeMode = 'test' | 'live';
 export type LetterInput = {
+  senderName: string;
   managerName: string;
   company: string;
   lastDay: string;
   reason: string | null;
+  homeAddress: string | null;
+  officeAddress: string | null;
   tone: 'grateful' | 'professional' | 'direct';
 };
 
@@ -37,20 +40,27 @@ export function stripePriceId(mode: StripeMode, env: NodeJS.ProcessEnv = process
 export function parseLetterInput(value: unknown): LetterInput | null {
   if (!value || typeof value !== 'object') return null;
   const form = value as Record<string, unknown>;
+  const senderName = typeof form.senderName === 'string' ? form.senderName.trim() : '';
   const managerName = typeof form.managerName === 'string' ? form.managerName.trim() : '';
   const company = typeof form.company === 'string' ? form.company.trim() : '';
   const lastDay = typeof form.lastDay === 'string' ? form.lastDay : '';
   const reason = typeof form.reason === 'string' ? form.reason.trim() : '';
+  const homeAddress = typeof form.homeAddress === 'string' ? form.homeAddress.replace(/\r\n/g, '\n').trim() : '';
+  const officeAddress = typeof form.officeAddress === 'string' ? form.officeAddress.replace(/\r\n/g, '\n').trim() : '';
   const tone = form.tone;
 
+  if (!senderName || senderName.length > 120) return null;
   if (!managerName || managerName.length > 120 || !company || company.length > 160) return null;
-  if (reason.length > 1000) return null;
+  if (reason.length > 1000 || homeAddress.length > 500 || officeAddress.length > 500) return null;
   if (tone !== 'grateful' && tone !== 'professional' && tone !== 'direct') return null;
   if (!/^\d{4}-\d{2}-\d{2}$/.test(lastDay)) return null;
   const date = new Date(`${lastDay}T00:00:00Z`);
   if (Number.isNaN(date.getTime()) || date.toISOString().slice(0, 10) !== lastDay) return null;
 
-  return { managerName, company, lastDay, reason: reason || null, tone };
+  return {
+    senderName, managerName, company, lastDay, reason: reason || null,
+    homeAddress: homeAddress || null, officeAddress: officeAddress || null, tone,
+  };
 }
 
 export function configuredAppOrigin(value: string | undefined): string | null {
@@ -102,11 +112,12 @@ export function isVerifiedCheckoutSession(
   sessionId: string,
   mode: StripeMode,
   env: NodeJS.ProcessEnv = process.env,
+  expectedPriceId: string = stripePriceId(mode, env),
 ): boolean {
   return session.id === sessionId &&
     session.metadata?.letter_id === letterId &&
     session.metadata?.stripe_mode === mode &&
-    session.metadata?.stripe_price_id === stripePriceId(mode, env) &&
+    session.metadata?.stripe_price_id === expectedPriceId &&
     session.payment_status === 'paid' &&
     session.livemode === (mode === 'live');
 }

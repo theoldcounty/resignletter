@@ -55,3 +55,10 @@ app.listen(port, '0.0.0.0', () => {
   console.log(`ResignLetter server listening on port ${port}`);
 });
 void initializeStripeWhenAvailable();
+
+const reconcile = app.locals.reconcileOutstanding as () => Promise<void>;
+function runReconciliation() {
+  void reconcile().catch(() => console.warn('Payment fulfillment reconciliation failed; it will retry.'));
+}
+setTimeout(runReconciliation, 5_000).unref();
+setInterval(runReconciliation, 60_000).unref();

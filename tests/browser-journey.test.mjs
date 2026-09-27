@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
+import { readFile } from 'node:fs/promises';
 import { after, before, test } from 'node:test';
 import { setTimeout as sleep } from 'node:timers/promises';
 import { chromium } from 'playwright-core';
@@ -50,6 +51,7 @@ after(async () => {
 
 async function fillLetterForm(page) {
   await page.getByRole('button', { name: 'Reject analytics' }).click();
+  await page.getByLabel('Your Name').fill('Taylor Employee');
   await page.locator('input[placeholder="e.g. Sarah Johnson"]').fill('Alex Manager');
   await page.locator('input[placeholder="e.g. Acme Corporation"]').fill('Example Ltd');
   await page.locator('input[type="date"]').fill('2026-10-30');
@@ -77,7 +79,15 @@ test('sandbox form reaches checkout, returns a paid letter, and supports downloa
     });
     await page.route('**/api/generate-letter', async (route) => {
       generationRequests.push(route.request().postDataJSON());
-      await route.fulfill(json({ letter: 'Dear Alex Manager,\n\nI am resigning from Example Ltd.\n\nSincerely' }));
+      await route.fulfill(json({
+        letter: 'Dear Alex Manager,\n\nI am resigning from Example Ltd.\n\nSincerely,\nTaylor Employee',
+        details: {
+          senderName: 'Taylor Employee',
+          homeAddress: '12 Sample Road\nLondon',
+          officeAddress: 'Office House\nLondon',
+          generatedAt: '2026-09-27T12:00:00Z',
+        },
+      }));
     });
     await page.route('https://checkout.stripe.test/mock', async (route) => {
       await route.fulfill({
@@ -92,6 +102,8 @@ test('sandbox form reaches checkout, returns a paid letter, and supports downloa
     assert.equal(await page.getByRole('button', { name: 'Test', exact: true }).count(), 0);
     assert.equal(await page.getByRole('button', { name: 'Live', exact: true }).count(), 0);
     await fillLetterForm(page);
+    await page.getByLabel('Home Address').fill('12 Sample Road\nLondon');
+    await page.getByLabel('Office Address').fill('Office House\nLondon');
     const checkoutButton = page.getByRole('button', { name: 'Continue to Stripe Checkout' });
     assert.equal(await checkoutButton.isEnabled(), true);
     await checkoutButton.click();
@@ -104,6 +116,10 @@ test('sandbox form reaches checkout, returns a paid letter, and supports downloa
     assert.equal(checkoutRequests.length, 1);
     assert.equal(checkoutRequests[0].mode, 'test');
     assert.equal(checkoutRequests[0].form.managerName, 'Alex Manager');
+    assert.equal(checkoutRequests[0].form.senderName, 'Taylor Employee');
+    assert.equal(checkoutRequests[0].form.homeAddress, '12 Sample Road\nLondon');
+    assert.equal(checkoutRequests[0].form.officeAddress, 'Office House\nLondon');
+    assert.equal(await page.getByText('27 September 2026').isVisible(), true);
     assert.deepEqual(verificationRequests, [{
       letterId: 'letter-123',
       sessionId: 'cs_test_mock',
@@ -116,8 +132,13 @@ test('sandbox form reaches checkout, returns a paid letter, and supports downloa
     }]);
 
     const downloaded = page.waitForEvent('download');
-    await page.getByRole('button', { name: 'Download' }).click();
+    await page.getByRole('button', { name: 'Download TXT' }).click();
     assert.equal((await downloaded).suggestedFilename(), 'resignation-letter.txt');
+    const pdfEvent = page.waitForEvent('download');
+    await page.getByRole('button', { name: 'Download PDF' }).click();
+    const pdfDownload = await pdfEvent;
+    assert.equal(pdfDownload.suggestedFilename(), 'resignation-letter.pdf');
+    assert.equal((await readFile(await pdfDownload.path())).subarray(0, 5).toString(), '%PDF-');
   } finally {
     await context.close();
   }
@@ -147,7 +168,10 @@ test('failed verification and generation retain the return link for retry withou
       await route.fulfill(
         generations === 1
           ? json({ error: 'Letter generation temporarily unavailable.' }, 502)
-          : json({ letter: 'Dear Alex Manager,\n\nPlease accept my resignation.' }),
+          : json({
+            letter: 'Dear Alex Manager,\n\nPlease accept my resignation.\n\nSincerely,\nTaylor Employee',
+            details: { senderName: 'Taylor Employee', homeAddress: null, officeAddress: null, generatedAt: '2026-09-27T12:00:00Z' },
+          }),
       );
     });
 
@@ -163,6 +187,29 @@ test('failed verification and generation retain the return link for retry withou
     assert.equal(verifications, 3);
     assert.equal(generations, 2);
     assert.equal(newCheckouts, 0);
+  } finally {
+    await context.close();
+  }
+});
+
+test('confirmed refund is shown clearly and a refunded checkout cannot request another letter', async () => {
+  const context = await browser.newContext();
+  const page = await context.newPage();
+  let generations = 0;
+  try {
+    await page.route('**/api/verify-payment', (route) => route.fulfill(json({ verified: true, mode: 'test' })));
+    await page.route('**/api/generate-letter', (route) => {
+      generations += 1;
+      return route.fulfill(json({
+        error: 'We could not create your letter. Refund confirmed by Stripe; it may take several business days to appear on your card.',
+        refundStatus: 'refunded',
+      }, 503));
+    });
+    await page.goto(`${baseUrl}/?session_id=cs_test_refunded&letter_id=letter-789&mode=test`);
+    await page.getByRole('heading', { name: 'Refund confirmed' }).waitFor();
+    assert.match(await page.getByRole('alert').innerText(), /refund confirmed by Stripe/i);
+    assert.equal(await page.getByRole('button', { name: 'Retry getting my letter' }).count(), 0);
+    assert.equal(generations, 1);
   } finally {
     await context.close();
   }

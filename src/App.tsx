@@ -3,11 +3,19 @@ import type { LetterFormData } from '@/lib/letter';
 import { getAnalyticsClientId, trackEvent, trackPageView } from '@/lib/analytics';
 import { PaymentModeIndicator } from '@/components/PaymentModeIndicator';
 import { normalizeStripeMode, type StripeMode } from '@/lib/paymentMode';
+import { downloadLetterPdf, formatLetterDate, formatLetterText, type LetterDetails } from '@/lib/letterDocument';
 import { FileText, Briefcase, Calendar, User, MessageSquare, Sparkles, Copy, Download, Check, ArrowRight, Shield, RotateCcw, Loader2 } from 'lucide-react';
 
 type Step = 'form' | 'processing' | 'output';
 type Tone = 'grateful' | 'professional' | 'direct';
 type PaymentReturn = { letterId: string; sessionId: string; mode: StripeMode };
+type RefundStatus = 'refunded' | 'pending' | 'unconfirmed';
+
+class LetterDeliveryError extends Error {
+  constructor(message: string, readonly refundStatus: RefundStatus | null = null) {
+    super(message);
+  }
+}
 
 const TONES: { value: Tone; label: string; description: string }[] = [
   { value: 'grateful', label: 'Grateful', description: 'Warm and appreciative' },
@@ -17,7 +25,7 @@ const TONES: { value: Tone; label: string; description: string }[] = [
 
 const PAYMENT_MODE = normalizeStripeMode(import.meta.env.VITE_STRIPE_MODE);
 
-async function generateLetter(id: string, sessionId: string, mode: StripeMode): Promise<string> {
+async function generateLetter(id: string, sessionId: string, mode: StripeMode): Promise<{ letter: string; details: LetterDetails }> {
   trackEvent('letter_generation_started');
   const response = await fetch('/api/generate-letter', {
     method: 'POST',
@@ -28,7 +36,7 @@ async function generateLetter(id: string, sessionId: string, mode: StripeMode): 
   if (!response.ok) {
     trackEvent('letter_generation_failed');
     const errData = await response.json().catch(() => ({}));
-    throw new Error(errData.error || 'Letter generation failed. Please retry.');
+    throw new LetterDeliveryError(errData.error || 'Letter generation failed. Please retry.', errData.refundStatus || null);
   }
 
   const data = await response.json();
@@ -38,16 +46,22 @@ async function generateLetter(id: string, sessionId: string, mode: StripeMode): 
   }
 
   trackEvent('letter_generation_succeeded');
-  return data.letter;
+  if (!data.details || typeof data.details.senderName !== 'string') {
+    throw new Error('Letter details were not returned. Please retry.');
+  }
+  return { letter: data.letter, details: data.details };
 }
 
 export default function App() {
   const [step, setStep] = useState<Step>('form');
   const [formData, setFormData] = useState<LetterFormData>({
+    senderName: '',
     managerName: '',
     company: '',
     lastDay: '',
     reason: '',
+    homeAddress: '',
+    officeAddress: '',
     tone: 'professional',
   });
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -55,6 +69,8 @@ export default function App() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [letter, setLetter] = useState<string | null>(null);
+  const [letterDetails, setLetterDetails] = useState<LetterDetails | null>(null);
+  const [refundStatus, setRefundStatus] = useState<RefundStatus | null>(null);
   const [copied, setCopied] = useState(false);
   const [paymentReturn, setPaymentReturn] = useState<PaymentReturn | null>(null);
   const formStarted = useRef(false);
@@ -71,6 +87,7 @@ export default function App() {
     setStep('processing');
     trackPageView('/payment/processing', 'Payment verification');
     setError(null);
+    setRefundStatus(null);
     let paymentVerified = false;
     try {
       const verificationResponse = await fetch('/api/verify-payment', {
@@ -95,7 +112,8 @@ export default function App() {
 
       paymentVerified = true;
       const generated = await generateLetter(id, sessionId, mode);
-      setLetter(generated);
+      setLetter(generated.letter);
+      setLetterDetails(generated.details);
       setPaymentReturn(null);
       setStep('output');
       window.history.replaceState({}, document.title, window.location.pathname);
@@ -105,6 +123,7 @@ export default function App() {
       trackEvent(paymentVerified ? 'payment_return_processing_failed' : 'payment_verification_failed', { mode });
       trackPageView('/payment/verification-failed', 'Payment verification failed');
       setError(err instanceof Error ? err.message : 'An unexpected error occurred');
+      setRefundStatus(err instanceof LetterDeliveryError ? err.refundStatus : null);
       setStep('form');
     }
   }, []);
@@ -139,6 +158,7 @@ export default function App() {
 
   function validate(): boolean {
     const newErrors: Record<string, string> = {};
+    if (!formData.senderName.trim()) newErrors.senderName = 'Required';
     if (!formData.managerName.trim()) newErrors.managerName = 'Required';
     if (!formData.company.trim()) newErrors.company = 'Required';
     if (!formData.lastDay.trim()) newErrors.lastDay = 'Required';
@@ -215,10 +235,10 @@ export default function App() {
     });
   }
 
-  function handleDownload() {
-    if (!letter) return;
-    trackEvent('letter_downloaded');
-    const blob = new Blob([letter], { type: 'text/plain' });
+  function handleDownloadTxt() {
+    if (!letter || !letterDetails) return;
+    trackEvent('letter_downloaded', { format: 'txt' });
+    const blob = new Blob([formatLetterText(letter, letterDetails)], { type: 'text/plain;charset=utf-8' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
@@ -227,17 +247,32 @@ export default function App() {
     URL.revokeObjectURL(url);
   }
 
+  async function handleDownloadPdf() {
+    if (!letter || !letterDetails) return;
+    try {
+      await downloadLetterPdf(letter, letterDetails);
+      trackEvent('letter_downloaded', { format: 'pdf' });
+    } catch {
+      setError('Could not create the PDF. Please try again or download the text version.');
+    }
+  }
+
   function handleReset() {
     trackEvent('create_another_letter_clicked');
     setStep('form');
     trackPageView('/', 'Resignation letter form');
     setLetter(null);
+    setLetterDetails(null);
+    setRefundStatus(null);
     setPaymentReturn(null);
     setFormData({
+      senderName: '',
       managerName: '',
       company: '',
       lastDay: '',
       reason: '',
+      homeAddress: '',
+      officeAddress: '',
       tone: 'professional',
     });
     setWaiverAccepted(false);
@@ -271,6 +306,7 @@ export default function App() {
             <p className="text-slate-500 mt-2">Review, copy, or download your professional resignation letter below.</p>
           </div>
 
+          {error && <div role="alert" className="mb-5 rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">{error}</div>}
           <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
             <div className="bg-slate-50 border-b border-slate-200 px-6 py-4 flex items-center justify-between">
               <div className="flex items-center gap-2 text-slate-600 text-sm font-medium">
@@ -287,19 +323,33 @@ export default function App() {
                   {copied ? 'Copied' : 'Copy'}
                 </button>
                 <button
-                  onClick={handleDownload}
+                  onClick={handleDownloadTxt}
                   type="button"
                   className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-slate-600 hover:text-slate-900 hover:bg-slate-100 rounded-lg transition-colors"
                 >
                   <Download className="w-4 h-4" />
-                  Download
+                  Download TXT
+                </button>
+                <button
+                  onClick={() => void handleDownloadPdf()}
+                  type="button"
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-slate-600 hover:text-slate-900 hover:bg-slate-100 rounded-lg transition-colors"
+                >
+                  <Download className="w-4 h-4" />
+                  Download PDF
                 </button>
               </div>
             </div>
-            <div className="p-6">
-              <pre className="whitespace-pre-wrap font-serif text-slate-800 text-base leading-relaxed">
-                {letter}
-              </pre>
+            <div className="p-8 sm:p-12 font-serif text-slate-800 leading-relaxed">
+              {letterDetails && (
+                <>
+                  {letterDetails.senderName && <p className="font-semibold">{letterDetails.senderName}</p>}
+                  {letterDetails.homeAddress && <p className="whitespace-pre-wrap">{letterDetails.homeAddress}</p>}
+                  {letterDetails.generatedAt && <p className="mt-5">{formatLetterDate(letterDetails.generatedAt)}</p>}
+                  {letterDetails.officeAddress && <p className="mt-5 whitespace-pre-wrap">{letterDetails.officeAddress}</p>}
+                </>
+              )}
+              <pre className="mt-6 whitespace-pre-wrap font-serif text-base leading-relaxed">{letter}</pre>
             </div>
           </div>
 
@@ -356,27 +406,39 @@ export default function App() {
             {paymentReturn ? (
               <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6 sm:p-8">
                 {error && (
-                  <div ref={errorRef} role="alert" className="mb-6 bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-xl text-sm">
+                  <div ref={errorRef} role="alert" className={`mb-6 px-4 py-3 rounded-xl text-sm border ${
+                    refundStatus === 'refunded'
+                      ? 'bg-emerald-50 border-emerald-200 text-emerald-800'
+                      : refundStatus === 'pending'
+                        ? 'bg-amber-50 border-amber-200 text-amber-800'
+                        : 'bg-red-50 border-red-200 text-red-700'
+                  }`}>
                     {error}
                   </div>
                 )}
-                <h2 className="text-xl font-semibold text-slate-900">Finish retrieving your letter</h2>
+                <h2 className="text-xl font-semibold text-slate-900">
+                  {refundStatus === 'refunded' ? 'Refund confirmed' : refundStatus === 'pending' ? 'Refund in progress' : 'Finish retrieving your letter'}
+                </h2>
                 <p className="mt-2 text-sm text-slate-600">
-                  Your checkout return is saved on this page. Retry verification and letter generation without making another payment.
-                  If it still fails, keep this page open and contact support.
+                  {refundStatus === 'refunded'
+                    ? 'Stripe confirmed your refund. It may take several business days to appear on your card. This checkout cannot be used again.'
+                    : refundStatus
+                      ? 'No letter was delivered. Keep this page open to check the refund status; do not pay again until it is resolved.'
+                      : 'Your checkout return is saved on this page. Retry verification and letter generation without making another payment. If it still fails, keep this page open and contact support.'}
                 </p>
                 <div className="mt-6 flex flex-col sm:flex-row gap-3">
-                  <button
+                  {refundStatus !== 'refunded' && <button
                     type="button"
                     onClick={() => void handlePostPayment(paymentReturn.letterId, paymentReturn.sessionId, paymentReturn.mode)}
                     className="rounded-xl bg-slate-900 px-5 py-3 text-sm font-semibold text-white hover:bg-slate-800"
                   >
-                    Retry getting my letter
-                  </button>
+                    {refundStatus ? 'Check refund status' : 'Retry getting my letter'}
+                  </button>}
                   <button
                     type="button"
                     onClick={() => {
-                      if (!window.confirm('Starting over will remove this payment return link. Continue only if you no longer need to retry it.')) return;
+                      if (refundStatus !== 'refunded' &&
+                        !window.confirm('Starting over will remove this payment return link. Continue only if you no longer need to retry it.')) return;
                       setPaymentReturn(null);
                       setError(null);
                       window.history.replaceState({}, document.title, window.location.pathname);
@@ -399,6 +461,19 @@ export default function App() {
               className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6 sm:p-8 space-y-6"
             >
               <div>
+                <label htmlFor="sender-name" className="block text-sm font-medium text-slate-700 mb-2">Your Name</label>
+                <input
+                  id="sender-name"
+                  type="text"
+                  maxLength={120}
+                  value={formData.senderName}
+                  onChange={(e) => setFormData({ ...formData, senderName: e.target.value })}
+                  placeholder="Your full name"
+                  className="w-full px-4 py-3 border border-slate-300 rounded-xl text-slate-900 focus:outline-none focus:ring-2 focus:ring-slate-900"
+                />
+                {errors.senderName && <p className="text-red-500 text-xs mt-1">{errors.senderName}</p>}
+              </div>
+              <div>
                 <label className="block text-sm font-medium text-slate-700 mb-2">
                   Manager's Name
                 </label>
@@ -413,6 +488,21 @@ export default function App() {
                   />
                 </div>
                 {errors.managerName && <p className="text-red-500 text-xs mt-1">{errors.managerName}</p>}
+              </div>
+
+              <div>
+                <label htmlFor="home-address" className="block text-sm font-medium text-slate-700 mb-2">Home Address <span className="text-slate-400 font-normal">(optional)</span></label>
+                <textarea id="home-address" rows={3} maxLength={500} value={formData.homeAddress}
+                  onChange={(e) => setFormData({ ...formData, homeAddress: e.target.value })}
+                  placeholder="Your address, if you want it on the letter"
+                  className="w-full px-4 py-3 border border-slate-300 rounded-xl text-slate-900 focus:outline-none focus:ring-2 focus:ring-slate-900" />
+              </div>
+              <div>
+                <label htmlFor="office-address" className="block text-sm font-medium text-slate-700 mb-2">Office Address <span className="text-slate-400 font-normal">(optional)</span></label>
+                <textarea id="office-address" rows={3} maxLength={500} value={formData.officeAddress}
+                  onChange={(e) => setFormData({ ...formData, officeAddress: e.target.value })}
+                  placeholder="Employer's office address, if you want it on the letter"
+                  className="w-full px-4 py-3 border border-slate-300 rounded-xl text-slate-900 focus:outline-none focus:ring-2 focus:ring-slate-900" />
               </div>
 
               <div>

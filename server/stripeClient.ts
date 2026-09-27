@@ -30,7 +30,7 @@ export async function getUncachableStripeClient(mode: StripeMode): Promise<Strip
   if (!stripeKeyMatchesMode(secretKey, mode)) {
     throw new Error(`The ${mode} Stripe key does not match its selected mode.`);
   }
-  return new Stripe(secretKey);
+  return new Stripe(secretKey, { timeout: 20_000 });
 }
 
 export async function getStripeSync(): Promise<StripeSync> {
