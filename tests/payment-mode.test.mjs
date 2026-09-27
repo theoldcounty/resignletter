@@ -2,6 +2,12 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { normalizeStripeMode } from '../src/lib/paymentMode.ts';
 import {
+  checkoutSessionParams as serverCheckoutSessionParams,
+  isVerifiedCheckoutSession as isServerVerifiedCheckoutSession,
+  stripeModeFromEnvironment,
+  stripePriceId,
+} from '../server/payment.ts';
+import {
   checkoutSessionParams,
   configuredCheckoutMode,
   isStripeMode,
@@ -33,6 +39,53 @@ test('only the configured server payment mode can start checkout', () => {
   assert.equal(configuredCheckoutMode(''), null);
   assert.notEqual(configuredCheckoutMode('test'), 'live');
   assert.notEqual(configuredCheckoutMode('live'), 'test');
+});
+
+test('STRIPE_MODE is the canonical server mode configuration', () => {
+  assert.equal(stripeModeFromEnvironment({ STRIPE_MODE: 'test' }), 'test');
+  assert.equal(stripeModeFromEnvironment({ STRIPE_MODE: 'live' }), 'live');
+  assert.equal(stripeModeFromEnvironment({ STRIPE_MODE: 'invalid' }), null);
+  assert.equal(stripeModeFromEnvironment({}), 'test');
+});
+
+test('server checkout reads the mode-specific configured price ID', () => {
+  const env = {
+    STRIPE_TEST_PRICE_ID: 'price_test_configured',
+    STRIPE_LIVE_PRICE_ID: 'price_live_configured',
+  };
+
+  assert.equal(stripePriceId('test', env), 'price_test_configured');
+  assert.equal(stripePriceId('live', env), 'price_live_configured');
+  assert.throws(() => stripePriceId('test', {}), /STRIPE_TEST_PRICE_ID/);
+
+  const liveParams = serverCheckoutSessionParams('https://app.example', 'letter-live', 'live', undefined, env);
+  assert.equal(liveParams.line_items[0].price, 'price_live_configured');
+  assert.equal(liveParams.metadata.stripe_mode, 'live');
+  assert.equal(liveParams.metadata.stripe_price_id, 'price_live_configured');
+  assert.match(liveParams.success_url, /mode=live/);
+});
+
+test('server return verification uses the configured price for the selected mode', () => {
+  const env = {
+    STRIPE_TEST_PRICE_ID: 'price_test_configured',
+    STRIPE_LIVE_PRICE_ID: 'price_live_configured',
+  };
+  const liveSession = {
+    id: 'cs_live_example',
+    metadata: {
+      letter_id: 'letter-live',
+      stripe_mode: 'live',
+      stripe_price_id: 'price_live_configured',
+    },
+    payment_status: 'paid',
+    livemode: true,
+  };
+
+  assert.equal(isServerVerifiedCheckoutSession(liveSession, 'letter-live', 'cs_live_example', 'live', env), true);
+  assert.equal(isServerVerifiedCheckoutSession(liveSession, 'letter-live', 'cs_live_example', 'live', {
+    ...env,
+    STRIPE_LIVE_PRICE_ID: 'price_another_live',
+  }), false);
 });
 
 test('uses a separate public price ID for each Stripe mode', () => {

@@ -13,9 +13,7 @@ before(async () => {
   server = spawn(process.execPath, ['node_modules/vite/bin/vite.js', '--host', '127.0.0.1', '--port', '5199', '--strictPort'], {
     env: {
       ...process.env,
-      VITE_SUPABASE_URL: baseUrl,
-      VITE_SUPABASE_ANON_KEY: 'public-browser-test-key',
-      VITE_PAYMENT_MODE: 'test',
+      STRIPE_MODE: 'test',
     },
     stdio: ['ignore', 'pipe', 'pipe'],
   });
@@ -69,17 +67,15 @@ test('sandbox form reaches checkout, returns a paid letter, and supports downloa
   const verificationRequests = [];
   const generationRequests = [];
   try {
-    await page.route('**/functions/v1/create-checkout', async (route) => {
-      const body = route.request().postDataJSON();
-      if (body.action === 'verify-payment') {
-        verificationRequests.push(body);
-        await route.fulfill(json({ verified: true, mode: 'test' }));
-      } else {
-        checkoutRequests.push(body);
-        await route.fulfill(json({ url: 'https://checkout.stripe.test/mock' }));
-      }
+    await page.route('**/api/checkout', async (route) => {
+      checkoutRequests.push(route.request().postDataJSON());
+      await route.fulfill(json({ url: 'https://checkout.stripe.test/mock' }));
     });
-    await page.route('**/functions/v1/generate-letter', async (route) => {
+    await page.route('**/api/verify-payment', async (route) => {
+      verificationRequests.push(route.request().postDataJSON());
+      await route.fulfill(json({ verified: true, mode: 'test' }));
+    });
+    await page.route('**/api/generate-letter', async (route) => {
       generationRequests.push(route.request().postDataJSON());
       await route.fulfill(json({ letter: 'Dear Alex Manager,\n\nI am resigning from Example Ltd.\n\nSincerely' }));
     });
@@ -109,7 +105,6 @@ test('sandbox form reaches checkout, returns a paid letter, and supports downloa
     assert.equal(checkoutRequests[0].mode, 'test');
     assert.equal(checkoutRequests[0].form.managerName, 'Alex Manager');
     assert.deepEqual(verificationRequests, [{
-      action: 'verify-payment',
       letterId: 'letter-123',
       sessionId: 'cs_test_mock',
       mode: 'test',
@@ -135,13 +130,11 @@ test('failed verification and generation retain the return link for retry withou
   let generations = 0;
   let newCheckouts = 0;
   try {
-    await page.route('**/functions/v1/create-checkout', async (route) => {
-      const body = route.request().postDataJSON();
-      if (body.action !== 'verify-payment') {
-        newCheckouts += 1;
-        await route.fulfill(json({ error: 'Unexpected checkout' }, 500));
-        return;
-      }
+    await page.route('**/api/checkout', async (route) => {
+      newCheckouts += 1;
+      await route.fulfill(json({ error: 'Unexpected checkout' }, 500));
+    });
+    await page.route('**/api/verify-payment', async (route) => {
       verifications += 1;
       await route.fulfill(
         verifications === 1
@@ -149,7 +142,7 @@ test('failed verification and generation retain the return link for retry withou
           : json({ verified: true, mode: 'test' }),
       );
     });
-    await page.route('**/functions/v1/generate-letter', async (route) => {
+    await page.route('**/api/generate-letter', async (route) => {
       generations += 1;
       await route.fulfill(
         generations === 1
@@ -179,7 +172,7 @@ test('checkout setup errors show a failure and allow another attempt', async () 
   const context = await browser.newContext();
   const page = await context.newPage();
   try {
-    await page.route('**/functions/v1/create-checkout', async (route) => {
+    await page.route('**/api/checkout', async (route) => {
       await route.fulfill(json({ error: 'Payment setup is temporarily unavailable.' }, 503));
     });
     await page.goto(baseUrl);
@@ -199,7 +192,7 @@ test('a cancelled checkout returns to the form without a payment request', async
   const page = await context.newPage();
   let paymentRequests = 0;
   try {
-    await page.route('**/functions/v1/**', async (route) => {
+    await page.route('**/api/**', async (route) => {
       paymentRequests += 1;
       await route.fulfill(json({ error: 'Unexpected payment request' }, 500));
     });
@@ -211,5 +204,70 @@ test('a cancelled checkout returns to the form without a payment request', async
     assert.equal(paymentRequests, 0);
   } finally {
     await context.close();
+  }
+});
+
+test('an incomplete form explains why checkout did not start beside the button', async () => {
+  const context = await browser.newContext();
+  const page = await context.newPage();
+  try {
+    await page.goto(baseUrl);
+    await page.getByRole('button', { name: 'Reject analytics' }).click();
+    await page.getByRole('button', { name: 'Continue to Stripe Checkout' }).click();
+    const alert = page.getByRole('alert');
+    await alert.getByText('Please complete the required details and accept the disclaimer before checkout.').waitFor();
+    await page.waitForFunction(() => {
+      const alert = document.querySelector('[role="alert"]');
+      if (!alert) return false;
+      const bounds = alert.getBoundingClientRect();
+      return bounds.top >= 0 && bounds.bottom <= window.innerHeight;
+    });
+    assert.equal(await page.getByRole('button', { name: 'Continue to Stripe Checkout' }).isEnabled(), true);
+  } finally {
+    await context.close();
+  }
+});
+
+test('live configuration displays Live and sends only live-mode checkout requests', async () => {
+  const liveUrl = 'http://127.0.0.1:5200';
+  const liveServer = spawn(process.execPath, ['node_modules/vite/bin/vite.js', '--host', '127.0.0.1', '--port', '5200', '--strictPort'], {
+    env: { ...process.env, STRIPE_MODE: 'live' },
+    stdio: ['ignore', 'pipe', 'pipe'],
+  });
+  let output = '';
+  liveServer.stdout.on('data', (chunk) => { output += chunk.toString(); });
+  liveServer.stderr.on('data', (chunk) => { output += chunk.toString(); });
+  const context = await browser.newContext();
+  try {
+    let ready = false;
+    for (let attempt = 0; attempt < 80; attempt += 1) {
+      if (liveServer.exitCode !== null) break;
+      try {
+        if ((await fetch(liveUrl)).ok) {
+          ready = true;
+          break;
+        }
+      } catch {
+        // Wait for Vite to start.
+      }
+      await sleep(100);
+    }
+    if (!ready) throw new Error(`Live browser test server did not start: ${output}`);
+
+    const page = await context.newPage();
+    let requestedMode;
+    await page.route('**/api/checkout', async (route) => {
+      requestedMode = route.request().postDataJSON().mode;
+      await route.fulfill(json({ error: 'Live checkout deliberately blocked in this test.' }, 503));
+    });
+    await page.goto(liveUrl);
+    assert.equal(await page.getByText('Live', { exact: true }).isVisible(), true);
+    await fillLetterForm(page);
+    await page.getByRole('button', { name: 'Continue to Stripe Checkout' }).click();
+    await page.getByRole('alert').getByText('Live checkout deliberately blocked in this test.').waitFor();
+    assert.equal(requestedMode, 'live');
+  } finally {
+    await context.close();
+    liveServer.kill('SIGTERM');
   }
 });

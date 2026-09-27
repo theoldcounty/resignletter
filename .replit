@@ -1,4 +1,4 @@
-modules = ["nodejs-24"]
+modules = ["nodejs-24", "postgresql-16"]
 [nix]
 channel = "stable-25_05"
 
@@ -33,7 +33,29 @@ outputType = "webview"
 localPort = 5000
 externalPort = 80
 
+[[ports]]
+localPort = 5201
+externalPort = 3002
+
+[[ports]]
+localPort = 24678
+externalPort = 3000
+
 [deployment]
-deploymentTarget = "static"
+deploymentTarget = "autoscale"
 build = ["npm", "run", "build"]
 publicDir = "dist"
+run = ["npm", "run", "start"]
+
+[userenv]
+
+[userenv.shared]
+STRIPE_TEST_PRICE_ID = "price_1UK0TaDzN5HHmyCzvFmo6OnO"
+STRIPE_LIVE_PRICE_ID = "price_1UK0rsDxbiVZ2Mt3tD1cqfbe"
+GA_MEASUREMENT_ID = "G-HF4121ZYTH"
+
+[userenv.development]
+STRIPE_MODE = "test"
+
+[userenv.production]
+STRIPE_MODE = "test"

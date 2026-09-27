@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import type { LetterFormData } from '@/lib/supabase';
+import type { LetterFormData } from '@/lib/letter';
 import { getAnalyticsClientId, trackEvent, trackPageView } from '@/lib/analytics';
 import { PaymentModeIndicator } from '@/components/PaymentModeIndicator';
 import { normalizeStripeMode, type StripeMode } from '@/lib/paymentMode';
@@ -15,22 +15,13 @@ const TONES: { value: Tone; label: string; description: string }[] = [
   { value: 'direct', label: 'Direct', description: 'Straight to the point' },
 ];
 
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL as string | undefined;
-const FUNCTION_URL = supabaseUrl ? `${supabaseUrl}/functions/v1` : null;
-const PAYMENT_MODE = normalizeStripeMode(import.meta.env.VITE_PAYMENT_MODE);
+const PAYMENT_MODE = normalizeStripeMode(import.meta.env.VITE_STRIPE_MODE);
 
 async function generateLetter(id: string, sessionId: string, mode: StripeMode): Promise<string> {
-  if (!FUNCTION_URL || !import.meta.env.VITE_SUPABASE_ANON_KEY) {
-    throw new Error('Supabase is not configured. Add VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY.');
-  }
-
   trackEvent('letter_generation_started');
-  const response = await fetch(`${FUNCTION_URL}/generate-letter`, {
+  const response = await fetch('/api/generate-letter', {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
-    },
+    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ letterId: id, sessionId, mode }),
   });
 
@@ -68,6 +59,13 @@ export default function App() {
   const [paymentReturn, setPaymentReturn] = useState<PaymentReturn | null>(null);
   const formStarted = useRef(false);
   const handledInitialQuery = useRef(false);
+  const errorRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (error && step === 'form') {
+      errorRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+  }, [error, step]);
 
   const handlePostPayment = useCallback(async (id: string, sessionId: string, mode: StripeMode) => {
     setStep('processing');
@@ -75,18 +73,10 @@ export default function App() {
     setError(null);
     let paymentVerified = false;
     try {
-      if (!FUNCTION_URL || !import.meta.env.VITE_SUPABASE_ANON_KEY) {
-        throw new Error('Supabase is not configured. Add VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY.');
-      }
-
-      const verificationResponse = await fetch(`${FUNCTION_URL}/create-checkout`, {
+      const verificationResponse = await fetch('/api/verify-payment', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          action: 'verify-payment',
           letterId: id,
           sessionId,
           mode,
@@ -154,7 +144,12 @@ export default function App() {
     if (!formData.lastDay.trim()) newErrors.lastDay = 'Required';
     if (!waiverAccepted) newErrors.waiver = 'You must accept the disclaimer to continue';
     setErrors(newErrors);
-    return Object.keys(newErrors).length === 0;
+    if (Object.keys(newErrors).length > 0) {
+      setError('Please complete the required details and accept the disclaimer before checkout.');
+      return false;
+    }
+    setError(null);
+    return true;
   }
 
   async function handleSubmit(e: React.FormEvent) {
@@ -171,16 +166,9 @@ export default function App() {
     setError(null);
 
     try {
-      if (!FUNCTION_URL || !import.meta.env.VITE_SUPABASE_ANON_KEY) {
-        throw new Error('Supabase is not configured. Add VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY.');
-      }
-
-      const response = await fetch(`${FUNCTION_URL}/create-checkout`, {
+      const response = await fetch('/api/checkout', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           form: formData,
           mode: PAYMENT_MODE,
@@ -365,14 +353,13 @@ export default function App() {
               </p>
             </div>
 
-            {error && (
-              <div role="alert" className="mb-6 bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-xl text-sm">
-                {error}
-              </div>
-            )}
-
             {paymentReturn ? (
               <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6 sm:p-8">
+                {error && (
+                  <div ref={errorRef} role="alert" className="mb-6 bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-xl text-sm">
+                    {error}
+                  </div>
+                )}
                 <h2 className="text-xl font-semibold text-slate-900">Finish retrieving your letter</h2>
                 <p className="mt-2 text-sm text-slate-600">
                   Your checkout return is saved on this page. Retry verification and letter generation without making another payment.
@@ -527,6 +514,12 @@ export default function App() {
               <div className="flex justify-center">
                 <PaymentModeIndicator mode={PAYMENT_MODE} />
               </div>
+
+              {error && (
+                <div ref={errorRef} role="alert" className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-xl text-sm">
+                  {error}
+                </div>
+              )}
 
               <button
                 type="submit"

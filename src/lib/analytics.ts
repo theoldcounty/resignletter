@@ -3,7 +3,9 @@ export type AnalyticsProperties = Record<string, AnalyticsValue>;
 export type AnalyticsConsent = 'granted' | 'denied' | null;
 
 const CONSENT_STORAGE_KEY = 'resignletter.analytics-consent';
-const GA_MEASUREMENT_ID = 'G-HF4121ZYTH';
+const GA_MEASUREMENT_ID = typeof import.meta.env === 'undefined'
+  ? ''
+  : import.meta.env.VITE_GA_MEASUREMENT_ID;
 
 let gaScriptRequested = false;
 let gaConfigured = false;
@@ -41,7 +43,7 @@ export function setAnalyticsConsent(granted: boolean): void {
 }
 
 function initializeGoogleAnalytics(): void {
-  if (typeof window === 'undefined') return;
+  if (typeof window === 'undefined' || !GA_MEASUREMENT_ID) return;
 
   if (!gaScriptRequested && typeof document !== 'undefined' && document.head) {
     if (!document.querySelector('script[data-ga4-loader]')) {

@@ -7,7 +7,7 @@ export function PaymentModeIndicator({ mode }: { mode: StripeMode }) {
         ? 'bg-red-100 text-red-800'
         : 'bg-amber-100 text-amber-900'
     }`}>
-      {mode === 'live' ? 'Live Payments' : 'Sandbox'}
+      {mode === 'live' ? 'Live' : 'Sandbox'}
     </span>
   );
 }
