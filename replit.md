@@ -22,6 +22,6 @@ Never put Stripe or AI secret keys in source files, `.env`, or GitHub. Rotate an
 
 ## Publishing
 
-The next publish must use the configured Autoscale server deployment, not the old static deployment. The previously published static site will continue serving its older build until the owner republishes. Do not publish a payment-ready claim until a real Stripe Sandbox checkout, return, webhook, and AI delivery have been verified with the configured account.
+The next publish must use a server deployment, not the old static deployment. The currently configured Autoscale target can sleep while idle; its in-process reconciliation timer cannot guarantee ten-minute refunds. Before Live launch, agree on a Reserved VM (always on, with different running costs) or an external scheduled worker, configure signed webhooks, and verify a real Sandbox checkout, return, webhook, and AI delivery. The previously published static site remains in place until the owner republishes.
 
 The old `supabase/` functions and migrations are no longer called by the app; they remain as historical source. Existing Supabase letter data was not copied or deleted during this backend change.
