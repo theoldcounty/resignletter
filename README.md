@@ -13,7 +13,7 @@ ResignLetter helps a visitor write a professional resignation letter. They enter
 3. On return, the server retrieves the session from Stripe. It checks the saved session, letter reference, payment mode, paid status, original Price ID, and the actual purchased line item before releasing anything. A cancelled or unverified checkout does not generate a letter.
 4. The server requests the letter from OpenAI and saves the text and generation timestamp. The result displays the saved letter, with TXT and styled A4 PDF downloads. The date is the **generation date**, not the current download date; optional address blocks appear only when supplied.
 5. If a verified payment cannot produce a letter, the server requests a full, idempotent Stripe refund. The customer sees whether Stripe confirmed it, it remains pending, or its status could not be confirmed. A refunded purchase cannot later generate a letter.
-6. No webhook is required for checkout: the app offers synchronous card payments and verifies a returned session directly with Stripe. An in-process reconciliation loop can finish an interrupted **returned** journey. While the server is running, it checks a paid checkout that never returned and attempts a refund after ten minutes. Unconfirmed refunds are retried and logged for manual resolution. **Autoscale may sleep when idle, so a customer who pays and closes the page may not receive a prompt refund—or any letter—until the server runs again.**
+6. No webhook is required for checkout: the app offers synchronous card payments and verifies a returned session directly with Stripe. Only after a verified customer return does it generate the letter; an in-process check can finish a return interrupted during generation. If generation fails after return, an unconfirmed refund is retried and logged. **If someone pays but never returns, the app does not generate a letter or automatically request a refund.** The private return link can still be used later to verify the payment and retrieve the letter.
 
 ### Pricing
 
@@ -25,7 +25,7 @@ One-time **£1 GBP per letter**. No subscription, stored card, or account. Devel
 - Print-ready A4 PDF with saved date and address layout, plus the original TXT download and copy action.
 - Verified, mode-specific Stripe checkout with the purchased line item checked against the stored original Price ID; rotating a configured price does not strand earlier purchases.
 - Persisted letters for retrying the return URL, including compatibility with older saved letters that have no recorded sender or generation date.
-- In-process completion for interrupted returns and a best-effort refund path for a paid checkout with no observed return; on Autoscale, this check can be delayed while idle.
+- In-process completion for a paid return interrupted during generation. No timed refund or generation occurs for a checkout with no observed return.
 - Idempotent refund attempts that distinguish **confirmed**, **pending**, and **unconfirmed** Stripe outcomes.
 - Consent-gated analytics. An optional, signature-verified webhook endpoint remains in the code but is not required or configured for checkout.
 - ResignLetter-specific page title, description, canonical URL, social titles/descriptions, and favicon instead of starter assets.
@@ -76,7 +76,7 @@ docs/public-identifiers.md       Public Stripe and analytics configuration refer
 | Delivery | Letter text, generation timestamp, return-seen timestamp, and most recent fulfillment-check timestamp. |
 | Diagnostics | Optional consented GA client ID, creation time, and update time. No card details or OpenAI key are stored. |
 
-The payment state can move from `pending` to `paid`, a failed/expired checkout, `refund_pending`, or `refunded`. Atomic database conditions stop a refunded letter from being saved and prevent an unreturned-checkout refund from overtaking a recorded customer return.
+The payment state can move from `pending` to `paid`, a failed/expired checkout, `refund_pending`, or `refunded`. Atomic database conditions stop a refunded letter from being saved. Without a webhook, a paid checkout is recorded in this table only when its private return link is used.
 
 For a **new development database**, use `server/schema.sql`. For an existing development database created before the 2.0 fields, apply `server/migrations/20260927_letter_delivery.sql` once; this workspace's development database is already upgraded. Replit Publish transfers the development schema to its managed production database. Do not manually run the development migration against production. Old letters without a known sender or generation date remain retrievable without inventing either value.
 
@@ -119,19 +119,19 @@ The automated suite checks form validation, payment gating, mode and line-item v
 ## Known limitations and planned enhancements
 
 - A buyer who loses the private return URL cannot independently recover a saved letter. A secure, short-lived recovery flow is a future enhancement; avoid public ID lookups.
-- Refunds that remain unconfirmed are retried and logged, but there is no dedicated operator alert yet. Add monitoring and a safe manual-resolution workflow before depending on unattended operations.
-- On the chosen Autoscale hosting, the in-process reconciliation timer does not run reliably while idle. A successful card payment followed by a closed browser may leave the buyer without a letter, and its refund may be delayed until another request wakes the server. This limitation was accepted for launch; a Reserved VM, scheduled worker, or a webhook would reduce the risk.
+- Refunds after a returned, paid purchase that cannot generate a letter are retried and logged while the server runs, but there is no dedicated operator alert yet. Add monitoring and a manual-resolution workflow for unconfirmed refunds.
+- A customer who pays but closes Stripe before the return redirect receives no letter and no automatic refund. The private return link remains usable if they retained it. This no-return policy was chosen for the simplified checkout flow; review such payments manually in Stripe.
 - PDF text is generated from the AI response and the known form fields; review the result before sending it to an employer.
 - Add an owned social preview image and verify the production domain before updating sharing metadata.
 
 ## Publishing status and checklist
 
-The configured deployment target is **Autoscale** (`npm run build` then `npm run start`). The currently published site is still **static**; a GitHub push does not publish the new server app. On the selected Autoscale hosting, reconciliation of paid checkouts with no return is best effort, not guaranteed on a ten-minute schedule.
+The published server is now on **Autoscale** (`npm run build` then `npm run start`). It is serving the previously published build until the owner republishes; a GitHub push alone does not update the live site. In this version, generation begins on verified return, not on a background timer for abandoned checkouts.
 
 Before clicking Publish to enable real payments:
 
 1. Confirm the currently configured Live key is a **rotated**, unexposed `sk_live_` key. A read-only Stripe call accepted a Live key and confirmed the configured price was an active one-time £1 GBP price; it cannot establish that the old exposed key was rotated.
-2. Confirm the accepted Autoscale tradeoff: if a paid customer does not return, the app may not notice and refund promptly while idle. No webhooks are configured or needed for returned synchronous card payments.
+2. Confirm the chosen no-return policy: if a paid customer never follows the success redirect, the app does not automatically deliver or refund that purchase. No webhooks are configured or needed for returned synchronous card payments.
 3. Check the production OpenAI secret and database/schema setup, publish the **server** app, and verify the published health endpoint and return URLs. Publish transfers the development schema; do not apply the SQL migration by hand in production.
 4. Confirm the actual Live payment, letter, and refund process under a separately authorized, controlled launch procedure. Do not infer Live success from Sandbox testing or perform an unrequested Live charge.
 

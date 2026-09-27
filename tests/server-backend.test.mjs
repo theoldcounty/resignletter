@@ -71,8 +71,7 @@ function createStore(overrides = {}) {
       record.letter_generated_at = '2026-09-27T12:00:00Z';
       return true;
     },
-    claimRefund: async (_id, _session, _mode, requireUnreturned = false) => {
-      if (requireUnreturned && record.return_seen_at) return false;
+    claimRefund: async () => {
       if (record.payment_status === 'paid' && !record.letter_text) record.payment_status = 'refund_pending';
       return record.payment_status === 'refund_pending';
     },
@@ -656,81 +655,25 @@ test('the background reconciliation refunds a failed letter after the customer r
   assert.equal(store.record.letter_text, null);
 });
 
-test('an unreturned paid checkout is refunded after a grace period instead of creating an inaccessible letter', async () => {
+test('an unreturned paid checkout is left alone, but its paid return link works later', async () => {
   const store = createStore({
     claimOutstanding: async () => [{
       id: letterId, stripe_session_id: sessionId, payment_mode: 'test',
-      created_at: new Date(Date.now() - 11 * 60_000).toISOString(), return_seen_at: null,
+      created_at: new Date(Date.now() - 2 * 60 * 60_000).toISOString(), return_seen_at: null,
     }],
   });
   let refunds = 0;
+  let verified = 0;
   const stripe = {
     checkout: { sessions: {
-      retrieve: async () => ({
-        id: sessionId,
-        metadata: { letter_id: letterId, stripe_mode: 'test', stripe_price_id: env.STRIPE_TEST_PRICE_ID },
-        payment_status: 'paid', livemode: false, payment_intent: 'pi_test_example',
-      }),
-      listLineItems: async () => lineItems(),
-    } },
-    refunds: {
-      list: async () => ({ data: [] }),
-      create: async () => { refunds += 1; return { status: 'succeeded' }; },
-    },
-  };
-  const app = createApp({
-    env, store, getStripeClient: async () => stripe,
-    fetcher: async () => { throw new Error('AI must not generate an inaccessible letter'); },
-  });
-  await app.locals.reconcileOutstanding();
-  assert.equal(refunds, 1);
-  assert.equal(store.record.payment_status, 'refunded');
-  assert.equal(store.record.letter_text, null);
-});
-
-test('a recent paid checkout is allowed time to return before background refund', async () => {
-  const store = createStore({
-    claimOutstanding: async () => [{
-      id: letterId, stripe_session_id: sessionId, payment_mode: 'test',
-      created_at: new Date().toISOString(), return_seen_at: null,
-    }],
-  });
-  const stripe = {
-    checkout: { sessions: {
-      retrieve: async () => ({
-        id: sessionId,
-        metadata: { letter_id: letterId, stripe_mode: 'test', stripe_price_id: env.STRIPE_TEST_PRICE_ID },
-        payment_status: 'paid', livemode: false, payment_intent: 'pi_test_example',
-      }),
-      listLineItems: async () => lineItems(),
-    } },
-  };
-  const app = createApp({ env, store, getStripeClient: async () => stripe });
-  await app.locals.reconcileOutstanding();
-  assert.equal(store.record.payment_status, 'paid');
-  assert.equal(store.record.letter_text, null);
-});
-
-test('a customer returning during the unreturned-refund check keeps the letter instead of being refunded', async () => {
-  let store;
-  store = createStore({
-    claimOutstanding: async () => [{
-      id: letterId, stripe_session_id: sessionId, payment_mode: 'test',
-      created_at: new Date(Date.now() - 11 * 60_000).toISOString(), return_seen_at: null,
-    }],
-    claimRefund: async () => {
-      store.record.return_seen_at = new Date().toISOString();
-      return false;
-    },
-  });
-  let refunds = 0;
-  const stripe = {
-    checkout: { sessions: {
-      retrieve: async () => ({
-        id: sessionId,
-        metadata: { letter_id: letterId, stripe_mode: 'test', stripe_price_id: env.STRIPE_TEST_PRICE_ID },
-        payment_status: 'paid', livemode: false, payment_intent: 'pi_test_example',
-      }),
+      retrieve: async () => {
+        verified += 1;
+        return {
+          id: sessionId,
+          metadata: { letter_id: letterId, stripe_mode: 'test', stripe_price_id: env.STRIPE_TEST_PRICE_ID },
+          payment_status: 'paid', livemode: false, payment_intent: 'pi_test_example',
+        };
+      },
       listLineItems: async () => lineItems(),
     } },
     refunds: {
@@ -745,8 +688,23 @@ test('a customer returning during the unreturned-refund check keeps the letter i
     }) }),
   });
   await app.locals.reconcileOutstanding();
+  assert.equal(verified, 0);
   assert.equal(refunds, 0);
-  assert.match(store.record.letter_text, /I resign/);
+  assert.equal(store.record.payment_status, 'pending');
+  assert.equal(store.record.letter_text, null);
+  await withApp(app, async (base) => {
+    const response = await fetch(`${base}/api/generate-letter`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ letterId, sessionId, mode: 'test' }),
+    });
+    assert.equal(response.status, 200);
+    assert.match((await response.json()).letter, /I resign/);
+  });
+  assert.equal(verified, 1);
+  assert.equal(store.record.payment_status, 'paid');
+  assert.equal(refunds, 0);
+  assert.ok(store.record.return_seen_at);
 });
 
 test('webhook requires a signature and rejects invalid signed payloads', async () => {

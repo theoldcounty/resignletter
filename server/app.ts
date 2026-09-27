@@ -304,13 +304,12 @@ export function createApp(dependencies: Dependencies = {}): Express {
     sessionId: string,
     mode: StripeMode,
     intentId: string | null,
-    requireUnreturned = false,
   ): Promise<{ error: string; refundStatus: 'refunded' | 'pending' | 'unconfirmed' }> {
     const current = await store.getLetter(letterId);
     if (current?.payment_status === 'refunded') {
       return { error: 'We could not create your letter. Refund confirmed by Stripe; it may take several business days to appear on your card.', refundStatus: 'refunded' };
     }
-    if (!await store.claimRefund(letterId, sessionId, mode, requireUnreturned)) {
+    if (!await store.claimRefund(letterId, sessionId, mode)) {
       return { error: 'We could not create your letter. The refund could not be confirmed. Please check again or contact support before paying again.', refundStatus: 'unconfirmed' };
     }
     const paymentIntent = intentId || current?.stripe_payment_intent_id;
@@ -423,33 +422,9 @@ export function createApp(dependencies: Dependencies = {}): Express {
       const rows = await store.claimOutstanding();
       const configuredMode = stripeModeFromEnvironment(env);
       await Promise.all(rows.map(async (row) => {
-        if (row.payment_mode !== configuredMode) return;
-        if (!row.return_seen_at) {
-          const verification = await verifyPayment(row.id, row.stripe_session_id, row.payment_mode);
-          if ('error' in verification) {
-            if (verification.status >= 500) console.warn('An outstanding checkout could not be checked; it will retry.');
-            return;
-          }
-          const latest = await store.getLetter(row.id);
-          if (latest?.return_seen_at) {
-            await deliverLetter(row.id, row.stripe_session_id, row.payment_mode);
-            return;
-          }
-          if (!latest || latest.letter_text || !Number.isFinite(Date.parse(row.created_at))) return;
-          if (latest.payment_status === 'refund_pending' ||
-            Date.now() - Date.parse(row.created_at) >= 10 * 60_000) {
-            const refund = await refundFailedLetter(row.id, row.stripe_session_id, row.payment_mode, verification.paymentIntentId, true);
-            if (refund.refundStatus === 'unconfirmed') {
-              const returned = await store.getLetter(row.id);
-              if (returned?.return_seen_at) {
-                await deliverLetter(row.id, row.stripe_session_id, row.payment_mode);
-              } else {
-                console.warn('An unreturned paid checkout needs refund resolution.');
-              }
-            }
-          }
-          return;
-        }
+        // Only resume journeys that reached the app after Stripe's paid return.
+        // Never generate or refund merely because a checkout was created.
+        if (row.payment_mode !== configuredMode || !row.return_seen_at) return;
         const result = await deliverLetter(row.id, row.stripe_session_id, row.payment_mode);
         if (result.status >= 500 && result.body.refundStatus !== 'refunded') {
           console.warn('An outstanding paid letter needs another fulfillment or refund check.');

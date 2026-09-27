@@ -122,14 +122,13 @@ export const storage = {
     return result.rowCount === 1;
   },
 
-  async claimRefund(letterId: string, sessionId: string, mode: StripeMode, requireUnreturned = false): Promise<boolean> {
+  async claimRefund(letterId: string, sessionId: string, mode: StripeMode): Promise<boolean> {
     const result = await database().query(
       `UPDATE public.resignation_letters
        SET payment_status = 'refund_pending', updated_at = now()
        WHERE id = $1 AND stripe_session_id = $2 AND payment_mode = $3
-          AND payment_status IN ('paid', 'refund_pending') AND letter_text IS NULL
-          AND ($4::boolean = false OR return_seen_at IS NULL)`,
-      [letterId, sessionId, mode, requireUnreturned],
+           AND payment_status IN ('paid', 'refund_pending') AND letter_text IS NULL`,
+      [letterId, sessionId, mode],
     );
     return result.rowCount === 1;
   },
@@ -147,26 +146,24 @@ export const storage = {
 
   async claimOutstanding(limit = 5): Promise<Array<{
     id: string; stripe_session_id: string; payment_mode: StripeMode;
-    created_at: string; return_seen_at: string | null;
+    return_seen_at: string | null;
   }>> {
     const result = await database().query<{
       id: string; stripe_session_id: string; payment_mode: StripeMode;
-      created_at: string; return_seen_at: string | null;
+      return_seen_at: string | null;
     }>(
       `WITH due AS (
          SELECT id FROM public.resignation_letters
-         WHERE stripe_session_id IS NOT NULL AND letter_text IS NULL
-           AND payment_status IN ('pending', 'paid', 'refund_pending')
+         WHERE stripe_session_id IS NOT NULL AND return_seen_at IS NOT NULL
+           AND letter_text IS NULL AND payment_status IN ('paid', 'refund_pending')
            AND (fulfillment_checked_at IS NULL OR fulfillment_checked_at < now() - interval '2 minutes')
-           AND (payment_status <> 'pending' OR updated_at < now() - interval '30 seconds')
          ORDER BY COALESCE(fulfillment_checked_at, created_at)
          LIMIT $1 FOR UPDATE SKIP LOCKED
        )
        UPDATE public.resignation_letters AS r
        SET fulfillment_checked_at = now()
        FROM due WHERE r.id = due.id
-       RETURNING r.id, r.stripe_session_id, r.payment_mode,
-         to_char(r.created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') AS created_at,
+        RETURNING r.id, r.stripe_session_id, r.payment_mode,
          to_char(r.return_seen_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') AS return_seen_at`,
       [limit],
     );
