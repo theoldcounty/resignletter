@@ -1,3 +1,6 @@
+// HTTP-level tests exercise the Node API through its real Express app while replacing external
+// providers at injection points. This keeps Stripe, persistence, and OpenAI effects deterministic
+// and lets each assertion focus on the backend's trust decisions and response contract.
 import assert from 'node:assert/strict';
 import { createServer } from 'node:http';
 import test from 'node:test';
@@ -5,8 +8,10 @@ import { createApp } from '../server/app.ts';
 import { getStripeCredentials, stripeKeyMatchesMode } from '../server/stripeClient.ts';
 import { parseLetterInput } from '../server/payment.ts';
 
+// Stable IDs join the in-memory letter record to the simulated Stripe checkout session.
 const letterId = '123e4567-e89b-42d3-a456-426614174000';
 const sessionId = 'cs_test_example';
+// Use a valid customer form throughout; individual tests override only the field under examination.
 const validForm = {
   senderName: 'Taylor Employee',
   managerName: 'Morgan Manager',
@@ -17,6 +22,7 @@ const validForm = {
   homeAddress: '12 Sample Road\nLondon',
   officeAddress: 'Office House\nLondon',
 };
+// Explicit test-only settings prevent accidental calls to live provider services.
 const env = {
   STRIPE_MODE: 'test',
   STRIPE_TEST_PRICE_ID: 'price_1UK0TaDzN5HHmyCzvFmo6OnO',
@@ -25,12 +31,15 @@ const env = {
   OPENAI_API_KEY: 'test-only-key',
 };
 
+// Stripe line items are fetched separately from the session and are part of product verification.
 const lineItems = (priceId = env.STRIPE_TEST_PRICE_ID) => ({
   data: [{ price: { id: priceId }, quantity: 1 }],
   has_more: false,
 });
 
+// Model the persisted payment state with mutable in-memory data; overrides let each case isolate one transition.
 function createStore(overrides = {}) {
+  // Share this row with store methods so the API's persistence effects can be asserted.
   const record = {
     id: letterId,
     sender_name: validForm.senderName,
@@ -51,21 +60,25 @@ function createStore(overrides = {}) {
   };
   return {
     record,
+    // These methods form the storage adapter surface consumed by the real app; each test overrides only needed behavior.
     createPendingLetter: async () => letterId,
     setCheckoutSession: async () => true,
     getLetter: async () => record,
     recordPaid: async () => {
+      // Accept idempotent confirmation without allowing unrelated terminal states back into the paid flow.
       if (!['pending', 'paid'].includes(record.payment_status)) return false;
       record.payment_status = 'paid';
       return true;
     },
     markReturnSeen: async () => {
+      // A browser return is meaningful only after payment has been verified.
       if (record.payment_status !== 'paid') return false;
       record.return_seen_at = '2026-09-27T12:00:00Z';
       return true;
     },
     applyWebhookStatus: async () => true,
     saveLetterText: async (_id, text) => {
+      // Save once after payment; existing output makes generation retries read-only.
       if (record.payment_status !== 'paid' || record.letter_text) return false;
       record.letter_text = text;
       record.letter_generated_at = '2026-09-27T12:00:00Z';
@@ -76,15 +89,18 @@ function createStore(overrides = {}) {
       return record.payment_status === 'refund_pending';
     },
     markRefunded: async () => {
+      // Do not report completion unless a refund claim was already in progress.
       if (record.payment_status !== 'refund_pending') return false;
       record.payment_status = 'refunded';
       return true;
     },
+    // Background reconciliation sees no work by default; recovery tests inject eligible rows explicitly.
     claimOutstanding: async () => [],
     ...overrides,
   };
 }
 
+// Validation trims accepted customer text and normalizes omitted optional values before persistence.
 test('requires the sender name and preserves only supplied optional addresses', () => {
   assert.equal(parseLetterInput({ ...validForm, senderName: '' }), null);
   assert.equal(parseLetterInput({ ...validForm, homeAddress: 'x'.repeat(501) }), null);
@@ -99,17 +115,21 @@ test('requires the sender name and preserves only supplied optional addresses', 
   assert.equal(parsed.officeAddress, null);
 });
 
+// Exercise the actual HTTP boundary on an ephemeral loopback port without external server infrastructure.
 async function withApp(app, callback) {
   const server = createServer(app);
   await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
   const { port } = server.address();
   try {
+    // Keep the app alive only for the callback's requests and assertions.
     await callback(`http://127.0.0.1:${port}`);
   } finally {
+    // Close the listener even when an assertion or request fails.
     await new Promise((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
   }
 }
 
+// Count provider-client creation to prove invalid mode/input is rejected before any Stripe interaction.
 test('checkout enforces configured mode and rejects invalid form before Stripe', async () => {
   let stripeCalls = 0;
   const app = createApp({
@@ -138,12 +158,14 @@ test('checkout enforces configured mode and rejects invalid form before Stripe',
   });
 });
 
+// A configured key must have the correct test/live prefix as well as exist.
 test('Stripe credential key prefixes must agree with payment mode', () => {
   assert.equal(stripeKeyMatchesMode('sk_test_fake', 'test'), true);
   assert.equal(stripeKeyMatchesMode('sk_live_fake', 'test'), false);
   assert.equal(stripeKeyMatchesMode('sk_live_fake', 'live'), true);
 });
 
+// Replit Secrets can supply provider credentials directly; missing or cross-mode keys fail explicitly.
 test('a sandbox key in Replit Secrets works without a Stripe connector', async () => {
   const credentials = await getStripeCredentials('test', {
     STRIPE_TEST_SECRET_KEY: 'sk_test_example',
@@ -158,6 +180,7 @@ test('a sandbox key in Replit Secrets works without a Stripe connector', async (
   );
 });
 
+// Keep both environment keys present so an incorrect cross-mode fallback is detectable.
 test('sandbox and live clients use only their corresponding configured secrets', async () => {
   const configured = {
     STRIPE_TEST_SECRET_KEY: 'sk_test_example',
@@ -171,6 +194,7 @@ test('sandbox and live clients use only their corresponding configured secrets',
   );
 });
 
+// A live-configured backend rejects sandbox requests before persistence or Stripe session creation.
 test('live checkout uses the live configured price and rejects sandbox requests', async () => {
   const liveEnv = {
     ...env,
@@ -178,6 +202,7 @@ test('live checkout uses the live configured price and rejects sandbox requests'
     STRIPE_TEST_PRICE_ID: 'price_test_configured',
     STRIPE_LIVE_PRICE_ID: 'price_live_configured',
   };
+  // Record persisted mode so a rejected request cannot quietly create a test-mode letter.
   const modes = [];
   const store = createStore({
     createPendingLetter: async (_form, mode) => {
@@ -221,6 +246,7 @@ test('live checkout uses the live configured price and rejects sandbox requests'
   assert.deepEqual(modes, ['live']);
 });
 
+// Session creation does not depend on webhook delivery being configured for this deployment.
 test('live checkout works without a webhook signing secret', async () => {
   let created = 0;
   const app = createApp({
@@ -246,6 +272,7 @@ test('live checkout works without a webhook signing secret', async () => {
   assert.equal(created, 1);
 });
 
+// Treat every browser-supplied payment claim as untrusted; the backend owns payment state and analytics IDs.
 test('checkout ignores forged payment fields and uses trusted letter data', async () => {
   let inserted;
   const store = createStore({
@@ -283,6 +310,7 @@ test('checkout ignores forged payment fields and uses trusted letter data', asyn
   });
 });
 
+// Missing provider credentials should surface an actionable configuration error, not fake success.
 test('missing Stripe key gives Preview an explicit 503', async () => {
   const app = createApp({
     env,
@@ -300,6 +328,7 @@ test('missing Stripe key gives Preview an explicit 503', async () => {
   });
 });
 
+// Check downstream fulfillment readiness before charging so a paid request is not knowingly undeliverable.
 test('checkout cannot charge if letter generation is not configured', async () => {
   let stripeCalls = 0;
   const app = createApp({
@@ -319,8 +348,10 @@ test('checkout cannot charge if letter generation is not configured', async () =
   });
 });
 
+// If fulfillment is unavailable after payment, idempotency and saved status prevent duplicate refunds.
 test('a paid checkout without AI is refunded once and never releases a letter', async () => {
   const store = createStore();
+  // Count Stripe refund creation to catch duplicate compensation on retry.
   let created = 0;
   const stripe = {
     checkout: { sessions: { retrieve: async () => ({
@@ -341,6 +372,7 @@ test('a paid checkout without AI is refunded once and never releases a letter', 
   };
   const app = createApp({ env: { ...env, OPENAI_API_KEY: undefined }, store, getStripeClient: async () => stripe });
   await withApp(app, async (base) => {
+    // Identical retries must observe the same refund state and reuse Stripe's idempotency key.
     const post = () => fetch(`${base}/api/generate-letter`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
@@ -359,6 +391,7 @@ test('a paid checkout without AI is refunded once and never releases a letter', 
   });
 });
 
+// A failed provider request is not evidence of a successful refund; retain the pending state honestly.
 test('a failed letter request never claims a refund Stripe has not confirmed', async () => {
   const store = createStore();
   const stripe = {
@@ -388,8 +421,10 @@ test('a failed letter request never claims a refund Stripe has not confirmed', a
   });
 });
 
+// Model Stripe's asynchronous refund lifecycle: creation can be pending before later retrieval shows success.
 test('a pending Stripe refund is not shown as confirmed until Stripe succeeds', async () => {
   const store = createStore();
+  // The toggle controls only the Stripe-side view of settlement between the two API calls.
   let refundCreated = 0;
   let refundCompleted = false;
   const stripe = {
@@ -405,6 +440,7 @@ test('a pending Stripe refund is not shown as confirmed until Stripe succeeds', 
   };
   const app = createApp({ env: { ...env, OPENAI_API_KEY: undefined }, store, getStripeClient: async () => stripe });
   await withApp(app, async (base) => {
+    // Both requests address the same order; only Stripe's refund listing advances between them.
     const post = () => fetch(`${base}/api/generate-letter`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
@@ -419,6 +455,7 @@ test('a pending Stripe refund is not shown as confirmed until Stripe succeeds', 
   });
 });
 
+// Persisted payment intent data allows recovery even when the checkout response no longer includes it.
 test('a failed prior refund can be retried using the stored payment intent', async () => {
   const store = createStore();
   store.record.stripe_payment_intent_id = 'pi_test_example';
@@ -443,6 +480,7 @@ test('a failed prior refund can be retried using the stored payment intent', asy
   };
   const app = createApp({ env: { ...env, OPENAI_API_KEY: undefined }, store, getStripeClient: async () => stripe });
   await withApp(app, async (base) => {
+    // The request identifies the order; persisted payment-intent data supplies the refund target.
     const response = await fetch(`${base}/api/generate-letter`, {
       method: 'POST', headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ letterId, sessionId, mode: 'test' }),
@@ -452,8 +490,10 @@ test('a failed prior refund can be retried using the stored payment intent', asy
   });
 });
 
+// Repeated requests reuse the persisted letter instead of paying for another AI generation.
 test('a paid letter is generated once and returns its saved date and address details', async () => {
   const store = createStore();
+  // Observe the OpenAI boundary to prove generation happens only once across retries.
   let aiCalls = 0;
   const stripe = {
     checkout: { sessions: { retrieve: async () => ({
@@ -464,6 +504,7 @@ test('a paid letter is generated once and returns its saved date and address det
   };
   const app = createApp({
     env, store, getStripeClient: async () => stripe,
+    // Return the OpenAI chat-completion envelope the production parser expects, without a provider call.
     fetcher: async (_url, request) => {
       aiCalls += 1;
       assert.match(request.body, /Taylor Employee/);
@@ -471,6 +512,7 @@ test('a paid letter is generated once and returns its saved date and address det
     },
   });
   await withApp(app, async (base) => {
+    // Keep both calls identical so the call counter measures reuse of this order's saved result.
     const post = () => fetch(`${base}/api/generate-letter`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
@@ -492,6 +534,7 @@ test('a paid letter is generated once and returns its saved date and address det
   });
 });
 
+// Older paid rows remain readable when newer display metadata columns are absent.
 test('a legacy paid letter remains retrievable without new sender and date columns populated', async () => {
   const store = createStore();
   store.record.payment_status = 'paid';
@@ -519,8 +562,10 @@ test('a legacy paid letter remains retrievable without new sender and date colum
   });
 });
 
+// Stripe remains the source of truth: an unpaid lookup cannot mark a return complete, but a later retry can.
 test('payment verification requires a returned paid session and can be retried', async () => {
   let paid = false;
+  // Count provider retrievals to rule out trusting a stale unpaid response.
   let retrieveCount = 0;
   const store = createStore();
   const stripe = {
@@ -548,6 +593,7 @@ test('payment verification requires a returned paid session and can be retried',
   const app = createApp({ env, store, getStripeClient: async () => stripe });
 
   await withApp(app, async (base) => {
+    // Reuse one return payload so the only changing input is Stripe's reported paid status.
     const post = () => fetch(`${base}/api/verify-payment`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
@@ -566,8 +612,10 @@ test('payment verification requires a returned paid session and can be retried',
   });
 });
 
+// Verify the item Stripe actually sold rather than rejecting old purchases solely because today's price rotated.
 test('a price rotation does not strand an earlier paid checkout, but a mismatched purchased item is rejected', async () => {
   const store = createStore();
+  // Change the simulated purchased item between requests to cover valid-old and invalid-unrelated products.
   let purchasedPrice = env.STRIPE_TEST_PRICE_ID;
   const stripe = {
     checkout: { sessions: {
@@ -584,6 +632,7 @@ test('a price rotation does not strand an earlier paid checkout, but a mismatche
     store, getStripeClient: async () => stripe,
   });
   await withApp(app, async (base) => {
+    // Reuse the same verification request as the simulated purchased line item changes.
     const post = () => fetch(`${base}/api/verify-payment`, {
       method: 'POST', headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ letterId, sessionId, mode: 'test' }),
@@ -597,6 +646,7 @@ test('a price rotation does not strand an earlier paid checkout, but a mismatche
   });
 });
 
+// A recorded customer return makes a paid order eligible for background recovery after the browser closes.
 test('the server can fulfill a completed checkout when the customer returned but closed during generation', async () => {
   const store = createStore({
     claimOutstanding: async () => [{
@@ -625,6 +675,7 @@ test('the server can fulfill a completed checkout when the customer returned but
   assert.match(store.record.letter_text, /I resign/);
 });
 
+// Recovery must compensate a returned customer when letter generation cannot complete.
 test('the background reconciliation refunds a failed letter after the customer returned', async () => {
   const store = createStore({
     claimOutstanding: async () => [{
@@ -655,6 +706,7 @@ test('the background reconciliation refunds a failed letter after the customer r
   assert.equal(store.record.letter_text, null);
 });
 
+// Do not refund just because a browser return was delayed; a later verified return can still fulfill the order.
 test('an unreturned paid checkout is left alone, but its paid return link works later', async () => {
   const store = createStore({
     claimOutstanding: async () => [{
@@ -662,6 +714,7 @@ test('an unreturned paid checkout is left alone, but its paid return link works 
       created_at: new Date(Date.now() - 2 * 60 * 60_000).toISOString(), return_seen_at: null,
     }],
   });
+  // These counters distinguish safe reconciliation from the later explicit return request.
   let refunds = 0;
   let verified = 0;
   const stripe = {
@@ -707,6 +760,7 @@ test('an unreturned paid checkout is left alone, but its paid return link works 
   assert.ok(store.record.return_seen_at);
 });
 
+// Webhook payloads are external input, so missing or invalid Stripe signatures must both be rejected.
 test('webhook requires a signature and rejects invalid signed payloads', async () => {
   const stripe = { webhooks: { constructEvent: () => { throw new Error('invalid'); } } };
   const app = createApp({

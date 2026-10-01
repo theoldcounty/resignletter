@@ -1,6 +1,16 @@
+/**
+ * PostgreSQL adapter for letter and payment state.
+ * Express calls this boundary rather than writing SQL in routes; parameterized
+ * queries protect user values, while conditional updates make retries and
+ * competing webhook/customer requests safe without a process-local lock.
+ */
 import { Pool } from 'pg';
 import type { LetterInput, StripeMode } from './payment';
 
+/**
+ * Application view of one resignation_letters row. Timestamps are selected as
+ * UTC strings for the API, while Stripe IDs link our record to provider state.
+ */
 export type LetterRecord = {
   id: string;
   sender_name: string | null;
@@ -21,8 +31,11 @@ export type LetterRecord = {
   return_seen_at: string | null;
 };
 
+// One lazily opened pool per Node process; keeping it shared avoids opening a
+// fresh PostgreSQL connection for every route call.
 let pool: Pool | undefined;
 
+/** Create the shared PostgreSQL pool on first use and fail clearly if unconfigured. */
 function database(): Pool {
   if (!process.env.DATABASE_URL) throw new Error('Database is not configured.');
   pool ??= new Pool({ connectionString: process.env.DATABASE_URL });
@@ -30,7 +43,13 @@ function database(): Pool {
 }
 
 export const storage = {
+  /**
+   * Persist validated form data before Checkout exists. The generated UUID is
+   * the stable correlation ID later written into Stripe metadata and webhooks.
+   */
   async createPendingLetter(form: LetterInput, mode: StripeMode, gaClientId?: string, priceId?: string): Promise<string> {
+    // Use positional parameters rather than string interpolation so names,
+    // addresses, and other user-controlled fields remain data, not SQL.
     const result = await database().query<{ id: string }>(
       `INSERT INTO public.resignation_letters
         (sender_name, manager_name, company, home_address, office_address,
@@ -44,6 +63,10 @@ export const storage = {
     return result.rows[0].id;
   },
 
+  /**
+   * Attach Stripe's Checkout session only while the order is still pending.
+   * The conditional update guards against overwriting state changed meanwhile.
+   */
   async setCheckoutSession(letterId: string, sessionId: string): Promise<boolean> {
     const result = await database().query(
       `UPDATE public.resignation_letters
@@ -54,6 +77,7 @@ export const storage = {
     return result.rowCount === 1;
   },
 
+  /** Load one order and serialize timestamps consistently for API responses. */
   async getLetter(letterId: string): Promise<LetterRecord | null> {
     const result = await database().query<LetterRecord>(
       `SELECT id, sender_name, manager_name, company, home_address, office_address,
@@ -67,6 +91,10 @@ export const storage = {
     return result.rows[0] ?? null;
   },
 
+  /**
+   * Record payment only for the matching order/session/mode. Allow an identical
+   * paid retry, but do not transition failed, expired, or refunded orders back.
+   */
   async recordPaid(letterId: string, sessionId: string, mode: StripeMode, paymentIntentId: string | null) {
     const result = await database().query(
       `UPDATE public.resignation_letters
@@ -79,6 +107,10 @@ export const storage = {
     return result.rowCount === 1;
   },
 
+  /**
+   * Record that the customer reached the app after Checkout. Reconciliation
+   * requires this marker so an abandoned session alone does not trigger work.
+   */
   async markReturnSeen(letterId: string, sessionId: string, mode: StripeMode): Promise<boolean> {
     const result = await database().query(
       `UPDATE public.resignation_letters
@@ -90,6 +122,11 @@ export const storage = {
     return result.rowCount === 1;
   },
 
+  /**
+   * Apply a verified Stripe event to the matching row in one atomic update.
+   * Keep paid state monotonic against stale failure events and protect refund
+   * states from late success events; session matching prevents cross-order writes.
+   */
   async applyWebhookStatus(
     letterId: string,
     mode: StripeMode,
@@ -97,6 +134,8 @@ export const storage = {
     sessionId: string | null,
     paymentIntentId: string | null,
   ) {
+    // COALESCE fills provider IDs when an event supplies them without erasing
+    // values already learned from Checkout or an earlier webhook.
     const result = await database().query(
       `UPDATE public.resignation_letters
        SET payment_status = CASE WHEN payment_status = 'paid' THEN 'paid' ELSE $3 END,
@@ -112,6 +151,10 @@ export const storage = {
     return result.rowCount === 1;
   },
 
+  /**
+   * Save generated text exactly once and only while payment remains paid.
+   * The predicate is the concurrency guard when two fulfillment requests race.
+   */
   async saveLetterText(letterId: string, letterText: string): Promise<boolean> {
     const result = await database().query(
       `UPDATE public.resignation_letters
@@ -122,6 +165,11 @@ export const storage = {
     return result.rowCount === 1;
   },
 
+  /**
+   * Atomically claim or resume refund handling for a paid order with no saved letter.
+   * Returning rowCount lets callers distinguish a valid claim from a stale or
+   * conflicting state without risking a refund for another session.
+   */
   async claimRefund(letterId: string, sessionId: string, mode: StripeMode): Promise<boolean> {
     const result = await database().query(
       `UPDATE public.resignation_letters
@@ -133,6 +181,7 @@ export const storage = {
     return result.rowCount === 1;
   },
 
+  /** Store Stripe-confirmed refund completion, never an unverified request. */
   async markRefunded(letterId: string, sessionId: string, mode: StripeMode): Promise<boolean> {
     const result = await database().query(
       `UPDATE public.resignation_letters
@@ -144,10 +193,17 @@ export const storage = {
     return result.rowCount === 1;
   },
 
+  /**
+   * Claim a small batch of orders eligible for recovery after customer return.
+   * PostgreSQL locks and SKIP LOCKED coordinate multiple app instances, while
+   * the timestamp throttles repeated provider calls after transient failures.
+   */
   async claimOutstanding(limit = 5): Promise<Array<{
     id: string; stripe_session_id: string; payment_mode: StripeMode;
     return_seen_at: string | null;
   }>> {
+    // The CTE selects and marks each due order in one statement, avoiding a
+    // race between finding work and claiming it for this reconciliation pass.
     const result = await database().query<{
       id: string; stripe_session_id: string; payment_mode: StripeMode;
       return_seen_at: string | null;

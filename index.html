@@ -1,11 +1,14 @@
 <!doctype html>
 <html lang="en">
   <head>
+    <!-- Document encoding and referrer policy apply before the React bundle executes. -->
     <meta charset="UTF-8" />
     <meta name="referrer" content="no-referrer" />
+    <!-- The browser tab icon is a lightweight, static SVG in the public asset directory. -->
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>ResignLetter — AI resignation letter generator</title>
+    <!-- Search and social metadata describe the same canonical web app entry point. -->
     <meta name="description" content="Create a professional resignation letter, then copy it or download a print-ready PDF or TXT. One-off £1 payment, no account required." />
     <link rel="canonical" href="https://resignletter-rplk.replit.app/" />
     <meta property="og:type" content="website" />
@@ -16,16 +19,22 @@
     <meta name="twitter:title" content="ResignLetter — AI resignation letter generator" />
     <meta name="twitter:description" content="Create a professional resignation letter and download a print-ready PDF or TXT." />
     <script>
+      // Queue analytics calls until Google's gtag library consumes the shared dataLayer.
       window.dataLayer = window.dataLayer || [];
+      // Expose the standard gtag interface before the external analytics script is available.
       function gtag() { window.dataLayer.push(arguments); }
       window.gtag = gtag;
+      // Default-deny storage; the consent component changes this only after the visitor opts in.
       gtag('consent', 'default', { analytics_storage: 'denied' });
       gtag('js', new Date());
+      // React tracks route-like page views itself, so avoid sending an automatic duplicate here.
       gtag('config', 'G-HF4121ZYTH', { send_page_view: false });
     </script>
   </head>
   <body>
+    <!-- React mounts the interactive application into this otherwise static document. -->
     <div id="root"></div>
+    <!-- Vite resolves the TypeScript entry point and its imported application modules. -->
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

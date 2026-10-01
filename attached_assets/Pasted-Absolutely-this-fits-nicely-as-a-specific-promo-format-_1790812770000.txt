@@ -1,0 +1,396 @@
+Absolutely — this fits nicely as a specific promo format inside the larger catalog. I’d turn what you’ve written into a reusable Replit prompt called something like P21 — Show, Don’t Sell.
+
+P21 — SCREEN-RECORDING SHORTS
+
+“SHOW, DON’T SELL” ENGINE
+
+Create a short-form promotional video for the application using a “show, don’t sell” philosophy.
+
+The viewer should see the problem, watch the product being used, and see the real result.
+
+Do not rely on talking heads or generic promotional claims.
+
+The application itself should be the star.
+
+⸻
+
+ASSETS TO PREPARE
+
+Use these supplied assets where available:
+
+* 60-character tagline
+* 150-character product description
+* 512 × 512 logo
+* 3 application screenshots
+* Application URL / working application
+* Relevant sample input
+* Relevant sample output
+
+Inspect the application and infer the most compelling legitimate use case.
+
+Do not invent capabilities or claims.
+
+⸻
+
+VIDEO LENGTH
+
+Target:
+
+20–45 seconds
+
+Optimise primarily for:
+
+* TikTok
+* Instagram Reels
+* YouTube Shorts
+* LinkedIn video
+* X / social feeds
+
+Use a vertical 9:16 composition by default.
+
+⸻
+
+SCENE 01 — THE HOOK
+
+0–3 seconds
+
+Start with the PROBLEM.
+
+Do not begin with the logo.
+
+Do not begin with a long title card.
+
+Show something recognisably frustrating, messy, confusing, boring or time-consuming.
+
+Possible examples:
+
+* messy receipt
+* PDF full of information
+* spreadsheet
+* blank form
+* awkward email
+* confusing document
+* repetitive task
+* multiple browser tabs
+* raw data
+* unstructured information
+
+Use large, instantly readable text.
+
+Example:
+
+“STOP DOING THIS MANUALLY.”
+
+or:
+
+“Still doing [TASK] by hand?”
+
+or:
+
+“Got 47 pages to work through?”
+
+Only use a specific claim if it accurately describes the demonstrated problem.
+
+Use a rapid visual hook.
+
+⸻
+
+SCENE 02 — THE PROCESS
+
+3–15 seconds
+
+Show the actual application.
+
+Use screen recording or a simulated recording based on the real interface.
+
+Show:
+
+1. Opening the application.
+2. Selecting/uploading the relevant input.
+3. The key interaction.
+4. Payment if payment is genuinely part of the product.
+5. Processing.
+6. The transition toward the result.
+
+Do not show unnecessary navigation.
+
+Crop tightly around the important UI.
+
+Use:
+
+* cursor highlights
+* click indicators
+* zooms
+* speed ramps
+* subtle screen shake
+* UI callouts
+* accelerated playback
+
+If the real process takes a long time, compress it visually while preserving the genuine sequence.
+
+⸻
+
+SCENE 03 — THE PAYOFF
+
+15–30 seconds
+
+This is the most important section.
+
+Show the actual result.
+
+Examples:
+
+INPUT
+→
+ANALYSIS
+→
+PDF
+
+or:
+
+MESSY INFORMATION
+→
+STRUCTURED INFORMATION
+
+or:
+
+DOCUMENT
+→
+USEFUL OUTPUT
+
+Make the result visually satisfying.
+
+Zoom into the important part of the output.
+
+Show the downloadable file, generated report, chart, recommendation, analysis or other actual result.
+
+Use a short benefit statement.
+
+Examples:
+
+“Your [RESULT].”
+
+“Ready to use.”
+
+“From [INPUT] to [OUTPUT].”
+
+If a genuine price point is part of the product, show it clearly.
+
+For example:
+
+“Get your [RESULT] for £1.”
+
+Do not invent time-saving claims such as “in 10 seconds” unless the actual product reliably achieves that.
+
+⸻
+
+SCENE 04 — THE CTA
+
+30–45 seconds
+
+Finish with a simple action.
+
+Examples:
+
+“Try it.”
+
+“Upload your first document.”
+
+“Get your report.”
+
+“See what it can do.”
+
+“Try [PRODUCT] for £1.”
+
+“Turn your [INPUT] into [OUTPUT].”
+
+Then display:
+
+* logo
+* tagline
+* URL
+* relevant CTA button
+* product interface
+
+Keep the final frame on screen long enough to read.
+
+⸻
+
+VISUAL STYLE
+
+Prioritise authenticity.
+
+The video should feel like:
+
+“Someone just showed me something genuinely useful.”
+
+rather than:
+
+“A company is trying to sell me something.”
+
+Use real application UI whenever possible.
+
+Use motion graphics to enhance the screen recording rather than conceal it.
+
+Recommended visual techniques:
+
+* punch-in zooms
+* cursor tracking
+* click highlights
+* kinetic typography
+* speed ramps
+* subtle parallax
+* animated arrows
+* UI magnification
+* progress animations
+* before/after wipes
+* document transformations
+* clean transitions
+
+⸻
+
+AUDIO
+
+Use energetic but unobtrusive music.
+
+The music should support rapid pacing.
+
+Add authentic UI sounds:
+
+* click
+* upload
+* confirmation
+* notification
+* download
+* subtle impact
+
+Synchronise important actions with the soundtrack.
+
+Optional:
+
+Use a short voiceover, but only if it improves comprehension.
+
+The video must work without sound.
+
+⸻
+
+TEXT RULE
+
+Assume the viewer may watch with the sound OFF.
+
+All critical information must therefore be understandable through:
+
+* visuals
+* captions
+* interface
+* short on-screen text
+
+Avoid paragraphs.
+
+Use short phrases.
+
+Examples:
+
+“MESSY INPUT”
+
+“UPLOAD”
+
+“ANALYSE”
+
+“RESULT”
+
+“DOWNLOAD”
+
+“£1”
+
+“TRY IT”
+
+⸻
+
+SCREEN-RECORDING RULES
+
+Never spend more than a few seconds showing an unimportant interface.
+
+If the user has to:
+
+click A
+→
+click B
+→
+click C
+→
+click D
+
+compress the sequence.
+
+Highlight only the meaningful interaction.
+
+The viewer should understand the workflow almost immediately.
+
+⸻
+
+MARKETING PRINCIPLE
+
+Do not tell the viewer:
+
+“Our revolutionary platform uses advanced technology to transform your workflow.”
+
+Instead:
+
+SHOW THE FILE.
+
+SHOW THE UPLOAD.
+
+SHOW THE BUTTON.
+
+SHOW THE PROCESS.
+
+SHOW THE RESULT.
+
+SHOW THE VALUE.
+
+⸻
+
+OUTPUT
+
+Produce:
+
+1. 45-second master version.
+2. 30-second condensed version.
+3. 15-second social cut.
+
+For each version provide:
+
+* scene timings
+* visual direction
+* screen-recording actions
+* on-screen text
+* optional voiceover
+* music direction
+* transition direction
+* CTA
+
+The 15-second version should preserve the essential:
+
+PROBLEM → PRODUCT → RESULT → CTA
+
+sequence.
+
+I’d also add three variants to your catalog
+
+P21A — Raw Demo
+Almost no motion graphics. Just the real screen recording, captions and satisfying UI sounds. This feels authentic.
+
+P21B — Cinematic Demo
+Same real workflow, but with zooms, parallax, animated typography, sound design and dramatic transitions.
+
+P21C — Comedy Demo
+Exaggerate the problem rather than exaggerating the product. For example, 37 browser tabs, papers flying everywhere, someone frantically searching through a PDF — then cut to the app calmly solving it.
+
+That gives you a useful distinction:
+
+Raw Demo = credibility
+Cinematic Demo = polish
+Comedy Demo = reach
+
+And I’d make P21 the default social-video generator in your overall prompt library, while P01/P12/P18 are your more elaborate “campaign” treatments.

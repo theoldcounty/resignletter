@@ -1,0 +1,400 @@
+Exactly. The video should sell the specific app’s outcome, not the generic idea of “an app vending machine.” The problem, demonstration, and benefits should all be derived from what that particular vending-machine app actually does.
+
+Since I don’t yet have the specific app/use case, the strongest prompt is one that tells the video model to build the narrative around the app’s actual purpose:
+
+Create a premium 4K cinematic product demonstration video for this specific vending-machine application.
+
+CORE PRINCIPLE
+
+The entire story must be about the specific problem this app solves.
+
+Do not make this a generic advertisement for AI, Replit, software, or vending-machine apps.
+
+First identify and visually establish:
+
+What does this specific app help someone accomplish?
+
+Then build the entire video around that outcome:
+
+PROBLEM → FRUSTRATION → SIMPLE SOLUTION → £1 → RESULT → PDF → BENEFITS
+
+The audience should understand within the first few seconds:
+
+“I have this problem.”
+
+And by the end:
+
+“This app solves it.”
+
+⸻
+
+1. SHOW THE SPECIFIC PROBLEM
+
+Open with a realistic scenario involving the exact problem the app is designed to solve.
+
+Do not use generic imagery of someone staring at a laptop.
+
+Show the actual task the user would otherwise have to perform manually.
+
+For example, if the app creates a document:
+
+Show someone struggling with:
+
+* blank pages
+* messy information
+* copying and pasting
+* deciding what to include
+* formatting
+* trying to make the result look professional
+
+If the app calculates something:
+
+Show:
+
+* the information the user has
+* the calculation they need
+* manual calculations
+* uncertainty
+* spreadsheets/calculators
+* risk of making an error
+
+If the app analyses information:
+
+Show:
+
+* large amounts of information
+* difficulty finding the relevant answer
+* reading/searching
+* manually comparing information
+* uncertainty about the conclusion
+
+If the app converts or generates something:
+
+Show the before state and the inconvenience of getting from that state to the desired result.
+
+The problem must be specific, recognisable and emotionally relatable.
+
+Use cinematic typography to reinforce the pain point.
+
+For example:
+
+“YOU HAVE THE INFORMATION.”
+
+“BUT GETTING THE ANSWER TAKES TIME.”
+
+Then:
+
+“WHAT IF IT DID THE WORK FOR YOU?”
+
+Adapt these statements to the actual purpose of the app.
+
+⸻
+
+2. INTRODUCE THE ACTUAL APP
+
+Cut dramatically to the current build of the real application.
+
+The current build is the source of truth.
+
+Use the real:
+
+* interface
+* typography
+* colours
+* buttons
+* fields
+* navigation
+* wording
+* payment flow
+* output
+* PDF functionality
+
+Do not redesign the UI.
+
+Do not invent screens.
+
+Do not use a futuristic replacement interface.
+
+The cinematic/retrowave aesthetic exists around the real product, not inside it.
+
+⸻
+
+3. SHOW THE SOLUTION AS A JOURNEY
+
+Demonstrate the exact user journey.
+
+Make every step visually obvious.
+
+STEP 1 — INPUT
+
+Show the user providing the information the specific app needs.
+
+Explain visually why those inputs matter.
+
+STEP 2 — £1
+
+Show the actual £1 payment interaction from the current build.
+
+Make the value proposition clear:
+
+“ONE PROBLEM.”
+
+“ONE £1 PAYMENT.”
+
+STEP 3 — THE APP DOES THE WORK
+
+Show the actual application processing the information.
+
+Use cinematic motion graphics around the real UI:
+
+data movement, subtle light trails, transitions and sound design.
+
+But never alter the actual product interface.
+
+STEP 4 — THE ANSWER
+
+Reveal the specific useful outcome the app produces.
+
+This should be the hero moment.
+
+Do not simply say:
+
+“Your result is ready.”
+
+Instead communicate what the result means to the user.
+
+For example:
+
+“FROM RAW INFORMATION → A CLEAR ANSWER.”
+
+or
+
+“FROM HOURS OF WORK → A FINISHED DOCUMENT.”
+
+or
+
+“FROM COMPLEX DATA → A SIMPLE DECISION.”
+
+Use the wording appropriate to the actual app.
+
+⸻
+
+4. PROVE THE VALUE
+
+Do not simply list generic software benefits.
+
+Every benefit must connect directly to the app’s purpose and be visually demonstrated.
+
+Use a sequence of checkboxes.
+
+✓ SOLVES [SPECIFIC PROBLEM]
+
+Show the original problem disappearing.
+
+✓ SAVES THE MANUAL WORK
+
+Show the tasks the user no longer needs to perform.
+
+✓ £1 PER USE
+
+Show the actual £1 transaction.
+
+✓ USEFUL OUTPUT
+
+Show the exact result produced by the application.
+
+✓ DOWNLOADABLE PDF
+
+Show the actual PDF being generated/downloaded.
+
+✓ READY TO USE
+
+Show the result in the context where the user would actually use it.
+
+For example, if the app creates a report, show the report being used as a report.
+
+If it creates a calculation, show the calculation being used to make the relevant decision.
+
+If it creates a form/document, show the finished document.
+
+The benefits must describe the outcome, not the technology.
+
+⸻
+
+5. BEFORE / AFTER
+
+Create a strong visual comparison.
+
+BEFORE
+
+Show the user’s original situation.
+
+Messy.
+
+Slow.
+
+Manual.
+
+Uncertain.
+
+AFTER
+
+Show the result from the app.
+
+Clear.
+
+Structured.
+
+Useful.
+
+Downloadable.
+
+Keep this comparison specific to the app.
+
+Use a dramatic transition:
+
+BEFORE
+
+→
+
+£1
+
+→
+
+AFTER
+
+⸻
+
+6. THE PDF MOMENT
+
+Make the downloadable PDF part of the story rather than an afterthought.
+
+Show:
+
+RESULT CREATED
+
+↓
+
+DOWNLOAD PDF
+
+↓
+
+KEEP IT
+
+↓
+
+USE IT
+
+↓
+
+SHARE IT
+
+Only show actions that the actual product supports.
+
+The PDF should feel like the tangible thing the customer has purchased for £1.
+
+⸻
+
+7. FINAL MESSAGE
+
+Bring the story back to the original problem.
+
+Show the problem from Scene 1 again.
+
+But now show the solution.
+
+The message should be:
+
+“You didn’t need another complicated tool.”
+
+“You needed this one thing done.”
+
+Then reveal the specific app’s value proposition in one short sentence.
+
+For example:
+
+”[APP] turns [INPUT] into [DESIRED OUTCOME].”
+
+Use the actual terminology relevant to the application.
+
+Then:
+
+£1
+
+GET THE RESULT.
+
+DOWNLOAD THE PDF.
+
+⸻
+
+8. FINAL BRAND CARD
+
+Finish with a clean cinematic title card.
+
+[SPECIFIC APP NAME]
+
+[ONE-SENTENCE VALUE PROPOSITION]
+
+Then the actual Replit logo/branding.
+
+Retrowave music reaches its final beat.
+
+Fade to black.
+
+⸻
+
+VISUAL STYLE
+
+Premium Miami Vice-inspired retrowave cinematic advertising.
+
+Use:
+
+* deep midnight environments
+* cyan and magenta neon
+* subtle 1980s synthwave atmosphere
+* chrome reflections
+* atmospheric haze
+* cinematic lens effects
+* elegant motion graphics
+* kinetic typography
+* smooth camera movement
+* subtle CRT/scanline texture
+* sophisticated UI transitions
+
+However:
+
+THE ACTUAL CURRENT BUILD MUST REMAIN 1:1.
+
+The interface is not an artistic interpretation.
+
+It is the real product.
+
+⸻
+
+NARRATIVE RULE
+
+The video must answer five questions in order:
+
+1. What problem does this specific app solve?
+
+2. Why is that problem frustrating/time-consuming/difficult?
+
+3. How does the user solve it with this app?
+
+4. What exactly do they get for £1?
+
+5. Why is that result useful enough to keep/download?
+
+Do not spend more time talking about Replit than the actual customer problem.
+
+The customer should remember:
+
+THE PROBLEM.
+
+THE £1 SOLUTION.
+
+THE RESULT.
+
+THE PDF THEY GET TO KEEP.
+
+If you give me the name of the specific vending-machine app + what it actually produces, I can make this much sharper — including the exact opening problem, the “aha” moment, benefit checkboxes, on-screen copy, and final tagline specifically for that app.

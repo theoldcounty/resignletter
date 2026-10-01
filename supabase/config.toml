@@ -1,8 +1,16 @@
+# Historical Supabase Edge Function settings. The current app starts through
+# server/index.ts and uses Express routes; these functions are not wired into it.
+# Keeping this file does not confirm that any of these functions are deployed.
+
+# These endpoints intentionally skip Supabase JWT verification. Their handlers
+# must validate requests and payment state themselves: checkout/generation
+# retrieve Stripe sessions when confirming payment; the webhook checks signatures.
 [functions.generate-letter]
 verify_jwt = false
 
 [functions.create-checkout]
 verify_jwt = false
 
+# Stripe authenticates webhooks with its signature header rather than a user JWT.
 [functions.stripe-webhook]
 verify_jwt = false

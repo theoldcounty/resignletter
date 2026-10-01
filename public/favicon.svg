@@ -1,5 +1,8 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <!-- Rounded slate tile provides the compact background used in browser tabs. -->
   <rect width="64" height="64" rx="14" fill="#0f172a"/>
+  <!-- Document outline connects the mark to the letter-writing purpose of the app. -->
   <path d="M22 12h16l8 8v30a3 3 0 0 1-3 3H22a4 4 0 0 1-4-4V16a4 4 0 0 1 4-4Z" fill="none" stroke="#fff" stroke-width="3"/>
+  <!-- Fold and text strokes suggest a written page while remaining legible at favicon size. -->
   <path d="M38 12v9h8M25 30h14M25 37h14M25 44h9" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
 </svg>

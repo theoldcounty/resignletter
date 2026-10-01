@@ -1,3 +1,5 @@
+// Payment-mode regression tests cover browser, Node, and Supabase Edge helpers together.
+// This catches contract drift across runtimes without making a real Stripe API call.
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { normalizeStripeMode } from '../src/lib/paymentMode.ts';
@@ -20,18 +22,21 @@ import {
 } from '../supabase/functions/_shared/payment.ts';
 
 test('defaults unknown or missing browser mode values to test mode', () => {
+  // A return URL or browser value must never promote itself into live mode.
   assert.equal(normalizeStripeMode(null), 'test');
   assert.equal(normalizeStripeMode('unexpected'), 'test');
   assert.equal(normalizeStripeMode('live'), 'live');
 });
 
 test('accepts only explicit test and live modes on the payment backend', () => {
+  // Restrict server mode values to the two Stripe environments the app deliberately supports.
   assert.equal(isStripeMode('test'), true);
   assert.equal(isStripeMode('live'), true);
   assert.equal(isStripeMode('production'), false);
 });
 
 test('only the configured server payment mode can start checkout', () => {
+  // Invalid deployment configuration fails closed instead of silently selecting a different environment.
   assert.equal(configuredCheckoutMode(undefined), 'test');
   assert.equal(configuredCheckoutMode('test'), 'test');
   assert.equal(configuredCheckoutMode('live'), 'live');
@@ -42,6 +47,7 @@ test('only the configured server payment mode can start checkout', () => {
 });
 
 test('STRIPE_MODE is the canonical server mode configuration', () => {
+  // The Node backend reads the same explicit mode contract as the Edge functions.
   assert.equal(stripeModeFromEnvironment({ STRIPE_MODE: 'test' }), 'test');
   assert.equal(stripeModeFromEnvironment({ STRIPE_MODE: 'live' }), 'live');
   assert.equal(stripeModeFromEnvironment({ STRIPE_MODE: 'invalid' }), null);
@@ -49,6 +55,7 @@ test('STRIPE_MODE is the canonical server mode configuration', () => {
 });
 
 test('server checkout reads the mode-specific configured price ID', () => {
+  // Distinct configured prices and mode metadata let later verification bind a checkout to its product.
   const env = {
     STRIPE_TEST_PRICE_ID: 'price_test_configured',
     STRIPE_LIVE_PRICE_ID: 'price_live_configured',
@@ -66,6 +73,7 @@ test('server checkout reads the mode-specific configured price ID', () => {
 });
 
 test('server return verification uses the configured price for the selected mode', () => {
+  // A rotated price may not be substituted during return verification: the configured purchase must match.
   const env = {
     STRIPE_TEST_PRICE_ID: 'price_test_configured',
     STRIPE_LIVE_PRICE_ID: 'price_live_configured',
@@ -89,11 +97,14 @@ test('server return verification uses the configured price for the selected mode
 });
 
 test('uses a separate public price ID for each Stripe mode', () => {
+  // Even publishable price identifiers stay separate so test and live products cannot be confused.
   assert.notEqual(stripePriceIds.test, stripePriceIds.live);
 });
 
 test('test payments select only a test key, never a live key', () => {
+  // Recording environment lookups proves a test request never even reads the live secret.
   const requests = [];
+  // Deliberately return a live-looking value for other names to expose an accidental fallback.
   const readEnvironment = (name) => {
     requests.push(name);
     return name === 'STRIPE_TEST_SECRET_KEY' ? 'sk_test_mock' : 'sk_live_mock';
@@ -112,6 +123,7 @@ test('test payments select only a test key, never a live key', () => {
 });
 
 test('a mocked test checkout uses the test price and releases only a verified paid letter', async () => {
+  // This small Stripe-shaped fake validates the SDK call contract without network or credentials.
   const letterId = 'letter mock/123';
   const params = checkoutSessionParams('https://app.example', letterId, 'test', '123.456');
   const fakeStripe = {
@@ -143,6 +155,7 @@ test('a mocked test checkout uses the test price and releases only a verified pa
 });
 
 test('verifies paid sessions against the expected letter and mode', () => {
+  // Treat session payment state, letter ownership, and Stripe live/test state as independent checks.
   const paidTestSession = {
     metadata: { letter_id: 'letter-123', stripe_mode: 'test' },
     payment_status: 'paid',
@@ -159,6 +172,7 @@ test('verifies paid sessions against the expected letter and mode', () => {
 });
 
 test('maps Stripe payment events to persisted states', () => {
+  // Ignore unrelated Stripe events so only recognized payment lifecycle signals mutate stored status.
   assert.equal(paymentStatusForStripeEvent('checkout.session.completed', 'paid'), 'paid');
   assert.equal(paymentStatusForStripeEvent('checkout.session.completed', 'unpaid'), null);
   assert.equal(paymentStatusForStripeEvent('payment_intent.payment_failed'), 'failed');
@@ -167,6 +181,7 @@ test('maps Stripe payment events to persisted states', () => {
 });
 
 test('tracks payment value without sending Stripe session or payment identifiers to analytics', () => {
+  // Analytics needs an aggregate amount, not checkout IDs that could correlate visitors to transactions.
   const params = paymentAnalyticsParams('paid', 'test', 'prod_public', 100, 'gbp');
 
   assert.deepEqual(params, {
@@ -187,6 +202,7 @@ test('tracks payment value without sending Stripe session or payment identifiers
 });
 
 test('verifies Stripe webhook signatures and rejects tampered or stale requests', async () => {
+  // Use Web Crypto to construct the same timestamped HMAC shape Stripe signs; then mutate one trust input at a time.
   const payload = JSON.stringify({ id: 'evt_test', livemode: false });
   const secret = 'unit-test-key';
   const timestamp = 1_800_000_000;

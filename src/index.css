@@ -1,3 +1,8 @@
+/* Tailwind's base layer supplies consistent browser defaults before app styles. */
 @tailwind base;
+
+/* Component-layer utilities are available for reusable styles when the UI needs them. */
 @tailwind components;
+
+/* Utility classes power the responsive layout composed directly in the React markup. */
 @tailwind utilities;

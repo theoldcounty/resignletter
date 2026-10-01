@@ -1,0 +1,1103 @@
+Yes — what you’re describing is essentially a reusable “Promo Video Prompt Library”: a catalog of generic production prompts that you can feed into Replit alongside the app/project, screenshots, logos, copy, etc., and have it infer the actual product and generate a tailored promo.
+
+The important part is to make the prompts product-agnostic but production-specific: tell Replit how to tell the story, what visual language to use, what evidence it can and cannot invent, and how to turn the actual app into the content.
+
+Promo Video Prompt Library
+
+ID	Nickname	Style	Primary purpose	Best audience
+P01	RetroWave	80s/90s VHS, synthwave	Brand awareness / launch	Broad
+P02	Problem → Solution	Modern cinematic	Explain the core value proposition	Prospects
+P03	Pain Simulator	Crisis/problem scenario	Make the problem immediately relatable	Target users
+P04	App in 60 Seconds	UI showreel	Demonstrate how the app works	Prospects
+P05	Before / After	Split-screen	Show transformation	Prospects
+P06	Data Cinema	Animated charts/UI	Showcase data and insights	Analytical buyers
+P07	The £1 Argument	Infomercial/comedy	Explain value/cost efficiency	Price-sensitive users
+P08	PDF → Intelligence	Document transformation	Show how static information becomes useful	Knowledge workers
+P09	Day in the Life	Real-world narrative	Show practical use	End users
+P10	Feature Carousel	Premium product reel	Showcase features	General
+P11	Founder Pitch	Direct/cinematic	Build trust and explain mission	Investors/customers
+P12	Fake 90s Infomercial	Comedy/parody	Social media attention	Broad/social
+P13	Future Interface	Futuristic/HUD	Premium/technology positioning	Tech audience
+P14	One Problem, Five Solutions	Fast editorial montage	Demonstrate breadth	Prospects
+P15	Proof Reel	Evidence-driven	Showcase real outputs/results	Decision-makers
+P16	Explain Like I’m Five	Illustrated animation	Simplify complex products	Broad
+P17	Cinematic Crisis	Dramatic live action	Establish urgency	Problem-aware audience
+P18	Product Trailer	Apple/Netflix-style	Brand launch	Broad
+P19	Social Micro-Reel	10–20 sec vertical	TikTok/Reels/Shorts	Social
+P20	Full Showreel	Hybrid	Complete marketing film	Website/presentation
+
+⸻
+
+The master prompt
+
+This is the one I’d actually keep as your base Replit prompt.
+
+MASTER PROMPT — GENERIC PRODUCT PROMO VIDEO GENERATOR
+
+You are an expert creative director, motion designer, UX demonstrator, product marketer and frontend engineer.
+
+Your task is to inspect the application you have been given and create a polished promotional video/showreel that explains:
+
+1. What problem the product solves.
+2. Who experiences that problem.
+3. Why the problem matters.
+4. How the application solves it.
+5. How the user interacts with the application.
+6. What the user gets as an output.
+7. What the practical benefits are.
+8. Why the product is worth using.
+9. What makes the product distinctive.
+10. What action the viewer should take next.
+
+Do NOT invent product capabilities, statistics, testimonials, customers, revenue figures, performance claims or other factual information that cannot be verified from the application, supplied materials or explicitly provided content.
+
+Where numerical evidence is unavailable, communicate the concept visually rather than inventing statistics.
+
+For example:
+
+* Use animated quantities only when they represent real data.
+* Use relative visual metaphors instead of fabricated percentages.
+* Use real application outputs wherever possible.
+* Use clearly labelled illustrative graphics when demonstrating hypothetical scenarios.
+
+INPUTS
+
+Inspect all available project materials, including:
+
+* Application UI
+* Screenshots
+* Existing branding
+* Logo
+* Colours
+* Typography
+* Copy
+* Documentation
+* Example outputs
+* Data structures
+* User flows
+* Features
+* Navigation
+* Existing animations
+* Existing assets
+
+Infer the application’s core purpose from the actual project rather than requiring the developer to manually describe it.
+
+If screenshots or assets are supplied, incorporate them naturally into the video.
+
+⸻
+
+CREATIVE STRUCTURE
+
+Build the video as a sequence of cinematic scenes.
+
+Default structure:
+
+SCENE 01 — HOOK
+Immediately establish the problem, curiosity or emotional tension.
+
+SCENE 02 — THE PROBLEM
+Show the frustrating, inefficient, expensive, confusing or time-consuming experience that exists without the product.
+
+SCENE 03 — TRANSITION
+Introduce the product as the change in the story.
+
+SCENE 04 — THE PRODUCT
+Reveal the actual application with polished motion graphics.
+
+SCENE 05 — HOW IT WORKS
+Demonstrate the primary workflow using the real interface.
+
+SCENE 06 — TRANSFORMATION
+Show the journey from input → processing → useful output.
+
+SCENE 07 — BENEFITS
+Visualise the practical benefits without fabricating unsupported claims.
+
+SCENE 08 — DIFFERENTIATION
+Show what makes this product interesting, distinctive or useful.
+
+SCENE 09 — PROOF
+Use real outputs, real UI, real data or supplied evidence wherever available.
+
+SCENE 10 — CALL TO ACTION
+End with a clear, memorable invitation to try, explore, upload, analyse, create, subscribe or otherwise use the product.
+
+⸻
+
+VISUAL LANGUAGE
+
+Create a sophisticated mixture of:
+
+* Motion graphics
+* UI animation
+* Parallax
+* Layered interfaces
+* Animated typography
+* Charts
+* Graphs
+* Progress indicators
+* Data visualisations
+* Cards
+* Carousels
+* Zoom transitions
+* Device mockups
+* Document transformations
+* Before/after comparisons
+* Cursor interactions
+* Highlight effects
+* Cinematic camera movement
+* Depth and perspective
+* Particle/light effects where appropriate
+* Subtle 3D effects
+* Brand-consistent transitions
+
+The result should feel like a professionally produced technology/product advertisement rather than a slideshow.
+
+Do not overload every scene with effects.
+
+Use visual hierarchy:
+HOOK → PROBLEM → PRODUCT → TRANSFORMATION → BENEFITS → PROOF → CTA.
+
+⸻
+
+BRANDING
+
+Extract the visual identity of the application from the supplied project.
+
+Use:
+
+* Existing brand colours
+* Existing logo
+* Existing typography
+* Existing UI components
+* Existing iconography
+
+If no formal brand system exists, create a restrained visual identity based on the application’s existing interface.
+
+Maintain visual consistency throughout the video.
+
+Do not introduce unrelated branding.
+
+⸻
+
+DATA VISUALISATION RULES
+
+Use charts and graphs when they genuinely help explain the product.
+
+Possible visualisations include:
+
+* Bar charts
+* Line charts
+* Donut charts
+* Timelines
+* Flow diagrams
+* Comparison tables
+* Progress indicators
+* Heatmaps
+* Network diagrams
+* Before/after metrics
+* Process funnels
+* Information density visualisations
+
+IMPORTANT:
+
+Never fabricate statistics.
+
+If the application does not contain numerical evidence, do not create fake percentages such as:
+
+“73% faster”
+
+“10x more productive”
+
+“92% of users”
+
+Instead use:
+
+* qualitative comparisons
+* actual supplied data
+* illustrative labels
+* visual transformations
+* process reduction
+* real screenshots
+* clearly marked hypothetical examples
+
+⸻
+
+UI PRESENTATION
+
+Treat the application’s interface as a major visual asset.
+
+Use cinematic UI demonstrations such as:
+
+* zooming into important interface elements
+* highlighting controls
+* cursor movement
+* animated clicks
+* expanding cards
+* scrolling through results
+* filtering data
+* opening documents
+* transforming inputs into outputs
+* switching views
+* carousel transitions
+* layered UI panels
+* perspective/parallax
+* screen-to-screen transitions
+
+Avoid simply recording a static screen.
+
+Make the interface feel alive.
+
+⸻
+
+STORYTELLING
+
+The viewer should understand the product without needing prior knowledge.
+
+Every scene should answer at least one of these questions:
+
+“What is the problem?”
+
+“Why should I care?”
+
+“What does this product do?”
+
+“How does it work?”
+
+“What do I get?”
+
+“Why is that useful?”
+
+“What should I do next?”
+
+Use short, confident copy.
+
+Prefer:
+
+“Upload.”
+
+“Analyse.”
+
+“Understand.”
+
+“Act.”
+
+over:
+
+“Our revolutionary AI-powered platform enables users to…”
+
+⸻
+
+AUDIO
+
+Select an audio direction appropriate to the chosen creative style.
+
+Possible approaches:
+
+* Synthwave
+* Retro electronic
+* Cinematic
+* Minimal technology
+* Corporate-modern
+* Documentary
+* Percussive
+* Ambient
+* Playful
+* Comedy/informercial
+
+Synchronise major visual transitions with the rhythm.
+
+Use subtle sound design:
+
+* clicks
+* UI sounds
+* VHS noise
+* tape hiss
+* transitions
+* notification sounds
+* keyboard sounds
+* digital glitches
+* impact sounds
+
+Do not make the soundtrack overpower the product explanation.
+
+⸻
+
+OUTPUT FORMAT
+
+Design the video as a reusable production sequence.
+
+For every scene define:
+
+SCENE NUMBER
+PURPOSE
+DURATION
+VISUAL
+ON-SCREEN TEXT
+UI ELEMENTS
+ANIMATION
+TRANSITION
+AUDIO
+VOICEOVER
+DATA USED
+WHY THE SCENE EXISTS
+
+Aim for approximately 30–90 seconds unless the application requires another duration.
+
+Also provide alternative cuts where appropriate:
+
+15-second social version
+30-second promotional version
+60-second explainer
+90-second website/showreel version
+
+⸻
+
+IMPORTANT CREATIVE PRINCIPLE
+
+Do not merely describe the application.
+
+SELL THE EXPERIENCE OF USING IT.
+
+The viewer should feel the contrast between:
+
+BEFORE → AFTER
+
+CONFUSION → CLARITY
+
+EFFORT → SIMPLICITY
+
+RAW INFORMATION → USEFUL INFORMATION
+
+PROBLEM → SOLUTION
+
+STATIC DOCUMENT → ACTIONABLE OUTPUT
+
+MANUAL WORK → ASSISTED WORK
+
+Use whichever contrast genuinely applies to the application.
+
+Do not force a contrast that the product does not support.
+
+⸻
+
+FINAL QUALITY STANDARD
+
+The finished concept should feel like:
+
+* a premium SaaS product launch
+* a technology commercial
+* a polished startup showreel
+* a cinematic UI demonstration
+* a social-media-ready product advertisement
+
+rather than:
+
+* a PowerPoint presentation
+* a generic AI-generated commercial
+* a collection of screenshots
+* a fake statistics presentation
+* a feature checklist
+
+Prioritise clarity, visual storytelling, authenticity, strong pacing and real evidence.
+
+That becomes your master template.
+
+Then you can prepend something like:
+
+Use P01 — RetroWave
+
+or
+
+Use P07 — The £1 Argument
+
+and Replit knows what creative treatment to apply.
+
+⸻
+
+Your actual prompt catalog
+
+P01 — RETROWAVE
+
+Use for: attention, launch videos, social, brand personality.
+
+Creative direction: VHS / 1980s–90s technology commercial / synthwave / CRT / cassette aesthetic.
+
+Create the promotional video using a deliberately nostalgic 1980s/1990s retro-futuristic aesthetic.
+
+Open with a VHS/CRT television effect:
+
+* tracking distortion
+* scanlines
+* tape noise
+* chromatic aberration
+* brief static
+* cassette loading effect
+* timestamp-style graphics
+* degraded broadcast quality
+
+Begin as though the viewer has discovered an old television commercial from the future.
+
+Gradually transition from deliberately low-fidelity VHS imagery into the application’s crisp modern interface.
+
+Create an intentional visual contrast:
+
+OLD WAY → NEW WAY
+
+Use synthwave/electronic-inspired music and rhythmic transitions.
+
+Use neon-inspired lighting only where compatible with the application’s branding.
+
+Once the product is introduced, progressively reduce the VHS distortion and allow the modern application UI to become increasingly clean and sharp.
+
+The final scene should be completely modern and polished, implying that the product has moved the viewer from an outdated way of working into a modern workflow.
+
+Use real application UI and real product functionality.
+
+Do not invent statistics.
+
+The retro aesthetic should frame the story, not obscure the product.
+
+⸻
+
+P02 — PROBLEM → SOLUTION
+
+Use for: almost anything.
+
+Structure:
+
+Pain → frustration → discovery → product → transformation → outcome.
+
+This should probably be your default commercial format.
+
+⸻
+
+P03 — PAIN SIMULATOR
+
+Show someone experiencing the problem in exaggerated but recognisable circumstances.
+
+For example:
+
+* too many documents
+* endless tabs
+* confusing information
+* repetitive work
+* missed information
+* spreadsheets everywhere
+* manual copying
+* searching through PDFs
+
+Then:
+
+“There has to be a better way.”
+
+Product appears.
+
+⸻
+
+P04 — APP IN 60 SECONDS
+
+This is your how-to / product demonstration.
+
+Structure:
+
+00:00 — What is this?
+00:05 — Start here
+00:10 — Input
+00:20 — Processing
+00:30 — Main feature
+00:40 — Output
+00:50 — Why it matters
+00:55 — CTA
+
+The crucial instruction:
+
+Don’t show every feature. Show the shortest believable path from problem → useful result.
+
+⸻
+
+P05 — BEFORE / AFTER
+
+Extremely useful for SaaS.
+
+Left side:
+
+BEFORE
+
+Right side:
+
+AFTER
+
+Animate the same task through both workflows.
+
+For example:
+
+5 documents
+↓
+manual searching
+↓
+copy/paste
+↓
+spreadsheet
+↓
+confusion
+versus
+Upload
+↓
+Analyse
+↓
+Understand
+↓
+Act
+
+Don’t claim time savings unless you have actual evidence.
+
+⸻
+
+P06 — DATA CINEMA
+
+This one sounds particularly relevant to what you’re building.
+
+Have Replit inspect the application’s actual data and turn it into a visual story.
+
+Create a premium data-driven promotional sequence.
+
+Treat the application’s real data and outputs as the visual hero.
+
+Begin with raw information entering the system.
+
+Gradually transform it through:
+
+RAW DATA
+↓
+PROCESSING
+↓
+STRUCTURE
+↓
+PATTERNS
+↓
+INSIGHT
+↓
+ACTION
+
+Use animated charts, graphs, cards, timelines, tables, filters and visual relationships where supported by the actual application.
+
+Use real data wherever available.
+
+Never fabricate numbers.
+
+If insufficient numerical data exists, use abstract visual representations of information rather than invented statistics.
+
+Animate charts progressively so the viewer understands what is changing and why.
+
+Use camera movement and parallax to create depth.
+
+Move between high-level visualisations and detailed UI views.
+
+The sequence should communicate that the product turns information into something easier to understand and use.
+
+Finish by returning to the real application interface and showing the user what they can actually do with the resulting information.
+
+⸻
+
+P07 — THE £1 ARGUMENT
+
+This is where I’d make the £1 → value concept a visual metaphor rather than fake ROI mathematics.
+
+For example:
+
+£1
+↓
+PDF
+↓
+pages
+↓
+information
+↓
+analysis
+↓
+structured output
+↓
+usable insight
+
+Or visually:
+
+ONE INPUT
+
+becomes
+
+MULTIPLE USEFUL OUTPUTS
+
+That lets you make the value proposition without inventing:
+
+“£1 saves you £73.”
+
+unless you actually have evidence for that.
+
+⸻
+
+P08 — PDF → INTELLIGENCE
+
+Potentially a particularly useful format for document-oriented apps.
+
+Visual:
+
+PDF
+
+→ pages fly apart
+
+→ text/data extracted
+
+→ relevant information highlighted
+
+→ structured cards
+
+→ charts
+
+→ summary
+
+→ actionable output.
+
+The PDF itself becomes the protagonist.
+
+⸻
+
+P09 — DAY IN THE LIFE
+
+Rather than explaining the application abstractly, follow a fictional but clearly illustrative user through their workflow.
+
+08:30 — Problem arrives
+09:00 — Information gathering
+10:00 — Friction
+11:00 — Product introduced
+11:05 — Workflow changes
+12:00 — Output ready
+
+Important: label fictional scenarios as illustrative if necessary.
+
+⸻
+
+P10 — FEATURE CAROUSEL
+
+This is your premium website hero / product launch format.
+
+Imagine:
+
+             FEATURE 01
+          ┌──────────────┐
+          │              │
+          │     UI       │
+          │              │
+          └──────────────┘
+FEATURE 02 → rotates forward
+FEATURE 03 → rotates forward
+FEATURE 04 → rotates forward
+
+Use 3D cards, parallax, depth and smooth camera movement.
+
+Each feature gets:
+
+Name → 2–5 word benefit → UI demonstration
+
+Not:
+
+“Our platform utilises an advanced…”
+
+⸻
+
+P11 — FOUNDER PITCH
+
+More human.
+
+Structure:
+
+“We built this because…”
+
+Then:
+
+“The problem is…”
+
+Then:
+
+“So we created…”
+
+Then actual product.
+
+Then:
+
+“Here’s what happens…”
+
+Then CTA.
+
+Could be done with a founder/avatar/voiceover or purely typographic.
+
+⸻
+
+P12 — THE FAKE 90s INFOMERCIAL
+
+This could be really fun for social media.
+
+Imagine:
+
+“ARE YOU STILL SEARCHING THROUGH 47 PDFs?!”
+
+Freeze frame.
+
+Record scratch.
+
+“THERE’S GOT TO BE A BETTER WAY!”
+
+Then product appears.
+
+Use:
+
+* cheesy transitions
+* exaggerated typography
+* starbursts
+* fake TV graphics
+* VHS noise
+* enthusiastic announcer
+* deliberately ridiculous visual metaphors
+
+But keep the actual product demonstration accurate.
+
+⸻
+
+P13 — FUTURE INTERFACE
+
+Completely opposite aesthetic.
+
+Black/dark environment.
+
+Floating application panels.
+
+Data travelling between systems.
+
+Glass interfaces.
+
+Depth.
+
+Parallax.
+
+Camera flying through UI.
+
+The application becomes a digital environment.
+
+Best for products where the interface itself looks sophisticated.
+
+⸻
+
+P14 — ONE PROBLEM / FIVE SOLUTIONS
+
+Start with one problem.
+
+Then show five ways the product addresses it.
+
+For example:
+
+ONE DOCUMENT
+→ Search
+→ Extract
+→ Compare
+→ Analyse
+→ Summarise
+
+Excellent for showing breadth without creating a giant feature checklist.
+
+⸻
+
+P15 — PROOF REEL
+
+This should be deliberately anti-hype.
+
+Use:
+
+* actual outputs
+* actual screenshots
+* actual datasets
+* real workflow
+* real calculations
+* real documents
+* actual product states
+
+Minimal music.
+
+Minimal claims.
+
+Heavy emphasis on evidence.
+
+This can work particularly well when your audience is sceptical.
+
+⸻
+
+P16 — EXPLAIN LIKE I’M FIVE
+
+Use illustration.
+
+Turn complicated concepts into simple visual metaphors.
+
+For example:
+
+PDF = filing cabinet
+
+Search = librarian
+
+Analysis = detective
+
+Output = map
+
+Then reveal how the application performs those conceptual steps.
+
+This is useful for products that are difficult to explain technically.
+
+⸻
+
+P17 — CINEMATIC CRISIS
+
+Start in the middle of the problem.
+
+No explanation.
+
+Just:
+
+“It’s 4:47 PM.”
+
+Then something happens.
+
+The user has to find information.
+
+The clock continues.
+
+Documents pile up.
+
+Screens multiply.
+
+Then:
+
+“Or…”
+
+Cut to the product.
+
+This creates urgency without having to invent numerical claims.
+
+⸻
+
+P18 — PRODUCT TRAILER
+
+Treat the application like a movie.
+
+Black screen.
+
+Sound.
+
+Logo.
+
+Slow reveal.
+
+Extreme closeups of UI.
+
+Typography.
+
+Rapid montage.
+
+Final product reveal.
+
+Tagline.
+
+CTA.
+
+Think technology launch trailer, rather than explainer video.
+
+⸻
+
+P19 — SOCIAL MICRO-REEL
+
+This needs to be extremely aggressive about the first 2–3 seconds.
+
+Structure:
+
+0–2 sec
+HOOK
+2–5 sec
+PROBLEM
+5–12 sec
+PRODUCT
+12–17 sec
+TRANSFORMATION
+17–20 sec
+CTA
+
+No introductions.
+
+No logos at the beginning unless the brand itself is already recognisable.
+
+⸻
+
+P20 — THE FULL SHOWREEL
+
+This is the one I’d use for the website.
+
+Combine:
+
+P03 Pain Simulator
+
+P04 App Demonstration
+
+P06 Data Cinema
+
+P10 Feature Carousel
+
+P15 Proof Reel
+
+P18 Product Trailer
+
+into one 60–90 second production.
+
+That gives you a hero video rather than simply another advertisement.
+
+⸻
+
+A useful “scene grammar”
+
+I’d also give Replit a standard vocabulary for constructing these videos.
+
+Code	Scene type	What happens
+H01	Hook	Immediate attention
+PR01	Problem	Establish pain
+PR02	Escalation	Make problem tangible
+TR01	Transition	Old → new
+UI01	Product reveal	Show app
+UI02	Interaction	Demonstrate action
+UI03	Deep dive	Zoom into feature
+DT01	Data	Visualise information
+DT02	Transformation	Input → output
+BF01	Benefit	Explain value
+BF02	Comparison	Before/after
+PF01	Proof	Actual evidence
+BR01	Branding	Logo/tagline
+CT01	CTA	Call to action
+
+Then a promo can be described as:
+
+P01 RetroWave
+H01
+→ PR01
+→ PR02
+→ TR01
+→ UI01
+→ UI02
+→ DT02
+→ BF01
+→ PF01
+→ CT01
+
+That’s much more powerful than simply saying “make me a promo video.”
+
+⸻
+
+The “don’t make stuff up” prompt
+
+I’d actually put this into every single one of your templates:
+
+PROMOTIONAL ACCURACY RULES
+
+Use the actual application as the source of truth.
+
+Never invent:
+
+* statistics
+* percentages
+* customer numbers
+* testimonials
+* revenue
+* savings
+* performance improvements
+* market share
+* user counts
+* scientific claims
+* customer logos
+* awards
+* certifications
+* integrations
+* features
+* capabilities
+
+unless they are explicitly present in the supplied project or source material.
+
+If a marketing claim cannot be verified, replace it with a visual demonstration.
+
+Instead of:
+
+“50% faster”
+
+show the actual workflow.
+
+Instead of:
+
+“10x more productive”
+
+show the transformation from a complex process into a simpler workflow.
+
+Instead of:
+
+“Trusted by thousands”
+
+show the actual product and its outputs.
+
+When statistics are available, identify their source and context.
+
+When demonstrating hypothetical scenarios, make it clear that they are illustrative.
+
+The goal is to make the product look compelling through its actual capabilities rather than fabricated claims.
+
+⸻
+
+Your catalog could ultimately look like this
+
+PROMO VIDEO LIBRARY
+│
+├── 01 — BRAND / ATTENTION
+│   ├── P01 RetroWave
+│   ├── P12 90s Infomercial
+│   ├── P18 Product Trailer
+│   └── P19 Social Micro-Reel
+│
+├── 02 — EXPLAIN
+│   ├── P02 Problem → Solution
+│   ├── P04 App in 60 Seconds
+│   ├── P08 PDF → Intelligence
+│   └── P16 Explain Like I'm Five
+│
+├── 03 — DEMONSTRATE
+│   ├── P05 Before / After
+│   ├── P09 Day in the Life
+│   ├── P10 Feature Carousel
+│   └── P14 One Problem / Five Solutions
+│
+├── 04 — DATA / EVIDENCE
+│   ├── P06 Data Cinema
+│   ├── P07 £1 Argument
+│   └── P15 Proof Reel
+│
+├── 05 — EMOTION / STORY
+│   ├── P03 Pain Simulator
+│   ├── P11 Founder Pitch
+│   └── P17 Cinematic Crisis
+│
+└── 06 — PREMIUM
+    ├── P13 Future Interface
+    └── P20 Full Showreel
+
+And then you could literally give Replit:
+
+PROMO STYLE: P01 — RetroWave
+PRODUCT: inspect the current application
+ASSETS: use supplied screenshots/logo
+DURATION: 45 seconds
+PLATFORM: website hero
+AUDIENCE: infer from application
+FOLLOW UNIVERSAL ACCURACY RULES
+
+That gives you a repeatable creative system, rather than having to reinvent a video prompt for every app.
+
+One other thing I’d strongly recommend: don’t make every promo “AI-looking.” Your strongest system would deliberately alternate between polished UI motion, real-world scenarios, typography, charts, document manipulation, comedic advertising, and cinematic footage. That gives you an actual creative library rather than 20 variations of the same SaaS animation.

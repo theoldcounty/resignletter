@@ -1,3 +1,5 @@
+// Analytics tests run against the real consent/event helpers but replace browser APIs.
+// This keeps consent and privacy behavior testable without loading Google scripts or sending data.
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
@@ -9,6 +11,8 @@ import {
   trackPageView,
 } from '../src/lib/analytics.ts';
 
+// Install only the browser surface analytics.ts consumes; Maps capture persisted consent
+// and gtag calls make outgoing analytics payloads directly inspectable.
 function installBrowserMock() {
   const calls = [];
   const values = new Map();
@@ -37,6 +41,7 @@ function installBrowserMock() {
 }
 
 test('does not track before the user grants analytics consent', () => {
+  // A fresh mock starts with no stored choice so the default must remain privacy-safe.
   const calls = installBrowserMock();
 
   trackPageView('/form', 'Resignation letter');
@@ -48,6 +53,7 @@ test('does not track before the user grants analytics consent', () => {
 });
 
 test('records page views without query-string identifiers after consent', () => {
+  // Payment-return query values are sensitive correlation tokens and must not reach analytics.
   const calls = installBrowserMock();
   setAnalyticsConsent(true);
   trackPageView('/payment/return?session_id=private-session', 'Payment return');
@@ -62,6 +68,7 @@ test('records page views without query-string identifiers after consent', () => 
 });
 
 test('restores the visitor consent choice for Google Analytics', () => {
+  // Saved denial must update Google's consent mode without loading its external script.
   const calls = installBrowserMock();
   setAnalyticsConsent(false);
   applySavedAnalyticsConsent();
@@ -72,6 +79,7 @@ test('restores the visitor consent choice for Google Analytics', () => {
 });
 
 test('only shares the GA client ID with consent and when the analytics cookie exists', () => {
+  // The client ID is useful for attribution only when consent and Google's cookie are both present.
   installBrowserMock();
   document.cookie = '_ga=GA1.1.123456.789012; other=value';
   assert.equal(getAnalyticsClientId(), null);
@@ -81,6 +89,7 @@ test('only shares the GA client ID with consent and when the analytics cookie ex
 });
 
 test('sends named funnel events without requiring a loaded analytics script', () => {
+  // Consent commands are queued before the loader finishes, so event tracking must remain safe.
   const calls = installBrowserMock();
   setAnalyticsConsent(true);
   trackEvent('checkout_started', { mode: 'test' });
